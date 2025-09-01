@@ -108,12 +108,6 @@ Los datos extraídos se organizan automáticamente en un **Google Sheet comparti
 
 ---
 
-## 📈 Visualización
-
-Los datos se consolidan en este Google Sheet:  
-🔗 [Google Sheets - Histórico Motick Motos](https://docs.google.com/spreadsheets/d/1wOIIgITBUSB4db2uwnM_JofIMfUnLtAq/edit#gid=1606413032)
-
----
 ###  📞 Contacto
 > Para consultas técnicas utilizar sistema **GitHub Issues**
 
