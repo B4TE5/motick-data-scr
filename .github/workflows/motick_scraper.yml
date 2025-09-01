@@ -1,0 +1,108 @@
+name: Motick Scraper Automation
+
+on:
+  # Ejecutar automaticamente cada dia a las 06:00 UTC (08:00 Madrid)
+  schedule:
+    - cron: '0 6 * * *'
+  
+  # Permitir ejecucion manual
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Modo de prueba (solo 2 cuentas)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  scrape-motick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 480  # 8 horas maximo
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Cache Dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Install Chrome and ChromeDriver
+      run: |
+        # Actualizar sistema
+        sudo apt-get update
+        
+        # Instalar Chrome
+        wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+        sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
+        
+        # Verificar version Chrome
+        google-chrome --version
+        
+    - name: Configure Chrome for Headless
+      run: |
+        # Crear directorio para configuracion
+        mkdir -p ~/.config/google-chrome
+        
+        # Variables de entorno para headless
+        echo "DISPLAY=:99" >> $GITHUB_ENV
+        echo "CHROME_BIN=/usr/bin/google-chrome" >> $GITHUB_ENV
+        
+    - name: Setup Virtual Display
+      run: |
+        # Instalar Xvfb para headless display
+        sudo apt-get install -y xvfb
+        
+        # Iniciar virtual display
+        Xvfb :99 -screen 0 1920x1080x24 &
+        
+    - name: Run Motick Scraper
+      env:
+        GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+        GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID_MOTICK }}
+        HEADLESS_MODE: true
+        TEST_MODE: ${{ inputs.test_mode }}
+      run: |
+        cd src
+        python scraper_motick.py
+        
+    - name: Run Motick Analysis
+      env:
+        GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+        GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID_MOTICK }}
+      run: |
+        cd src
+        python analisis_motick.py
+        
+    - name: Upload Artifacts (Backup)
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: motick-scraper-results-${{ github.run_number }}
+        path: |
+          logs/
+          backup/
+        retention-days: 30
+        
+    - name: Notify Results
+      if: always()
+      run: |
+        echo "MOTICK SCRAPER: Ejecucion completada"
+        echo "DATOS: Revisar Google Sheets para datos actualizados"
+        echo "BACKUP: Artefactos subidos como respaldo"

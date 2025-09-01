@@ -1,0 +1,22 @@
+# Credenciales y datos locales (NUNCA subir)
+credentials/
+data/
+resultados_motick/
+backup*/
+*.json
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.log
+
+# IDEs  
+.vscode/
+.idea/
+
+# Temporales
+temp/
+cache/
+EOF

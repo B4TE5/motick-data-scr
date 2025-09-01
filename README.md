@@ -131,4 +131,8 @@ Los datos extraídos se organizan automáticamente en un **Google Sheet comparti
 
 **© 2025- Todos los derechos reservados**
 
+<<<<<<< HEAD
 </div>
+=======
+</div>
+>>>>>>> 8ff232a (Initial commit: Subida del sistema de automatización completa al repo)
