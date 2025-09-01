@@ -1,21 +1,25 @@
 
 <div align="center">
 
-# 🏍️ Motick Moto Scraper & Analyzer
+# 🏍️ Motick Moto Scraper 🏍️
 
 **Sistema automatizado de scraping y análisis de mercado de motos en Wallapop**
 
+[![Build](https://img.shields.io/badge/Build-Passing-success)](../../actions)
 [![Python](https://img.shields.io/badge/Python-3.11+-blue)](https://www.python.org/downloads/)
-[![Selenium](https://img.shields.io/badge/Selenium-WebDriver-43B02A)](https://www.selenium.dev/)
-[![Google Sheets API](https://img.shields.io/badge/Google-Sheets-4285F4)](https://developers.google.com/sheets)
-[![Estado](https://img.shields.io/badge/Estado-Activo-brightgreen)]()
-[![License](https://img.shields.io/badge/Licencia-Privada-red)]()
+[![Selenium](https://img.shields.io/badge/Selenium-WebDriver-43B02A)](https://www.selenium.dev/downloads/)
+[![Google Sheets API](https://img.shields.io/badge/Google-Workspace-4285F4)](https://developers.google.com/workspace/sheets/api/guides/concepts?hl=es-419)
+[![License](https://img.shields.io/badge/License-Private-red)](LICENSE)
 
-📊 **[Ver hoja de resultados](https://docs.google.com/spreadsheets/d/1wOIIgITBUSB4db2uwnM_JofIMfUnLtAq/edit?gid=1606413032#gid=1606413032)**
+## Excel de Datos Diario
+
+🔗 [Google Sheets Link](https://docs.google.com/spreadsheets/d/1wOIIgITBUSB4db2uwnM_JofIMfUnLtAq/edit?gid=1606413032#gid=1606413032)
 
 </div>
 
+
 ---
+
 
 ## 🖥️ Descripción General
 
