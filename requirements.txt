@@ -10,4 +10,3 @@ python-dotenv==1.0.1
 webdriver-manager==4.0.2
 colorama==0.4.6
 numpy==1.26.4
-hashlib3==2.5.0
