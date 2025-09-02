@@ -18,7 +18,7 @@ def print_step(step_num, description):
 def create_directories():
     """Crea las carpetas necesarias"""
     directories = [
-        'src',
+        'scr',
         'credentials', 
         'logs',
         'backup',
