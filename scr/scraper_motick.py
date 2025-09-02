@@ -1,8 +1,8 @@
 """
-Scraper Motick - Version Google Sheets
+Scraper Motick - Version Google Sheets CORREGIDA
 Extrae datos de motos MOTICK y los sube directamente a Google Sheets
 
-Version: 1.0 - Automatizada para GitHub Actions
+Version: 1.1 - CORREGIDA para extraer precios y KM de descripcion
 Basado en: SCR_DATA_MOTICK.py original
 """
 
@@ -144,8 +144,112 @@ def extract_title_robust(driver):
     
     return "Titulo no encontrado"
 
+def extract_price_from_description_motos(description_text):
+    """NUEVO: Extrae precio de la descripcion especifico para MOTOS"""
+    if not description_text:
+        return "No especificado"
+    
+    # Limpiar texto
+    clean_text = description_text.replace('\u00a0', ' ').replace('&nbsp;', ' ').replace('&euro;', 'EUR').replace('€', 'EUR')
+    
+    # PATRONES ESPECIFICOS PARA MOTOS (basado en el HTML de ejemplo)
+    price_patterns = [
+        r'-\s*Precio:\s*(\d{1,2}\.?\d{3,6})\s*EUR',       # "- Precio: 5.490€"
+        r'-\s*Precio:\s*(\d{1,2}\.?\d{3,6})',             # "- Precio: 5490"
+        r'Precio:\s*(\d{1,2}\.?\d{3,6})\s*EUR',           # "Precio: 5.490€"
+        r'Precio:\s*(\d{1,2}\.?\d{3,6})',                 # "Precio: 5490"
+        r'(\d{1,2}\.\d{3})\s*EUR',                        # "5.490 EUR"
+        r'(\d{4,6})\s*EUR',                               # "5490 EUR"
+        r'(\d{1,2}\.\d{3})\s*€',                          # "5.490 €"
+        r'(\d{4,6})\s*€'                                  # "5490 €"
+    ]
+    
+    for pattern in price_patterns:
+        matches = re.finditer(pattern, clean_text, re.IGNORECASE)
+        for match in matches:
+            try:
+                price_str = match.group(1).replace('.', '')
+                price_value = int(price_str)
+                
+                # Validar rango realista para motos
+                if 500 <= price_value <= 80000:
+                    return f"{price_value:,} EUR".replace(',', '.')
+            except:
+                continue
+    
+    return "No especificado"
+
+def extract_km_from_description_motos(description_text):
+    """NUEVO: Extrae KM de la descripcion especifico para MOTOS"""
+    if not description_text:
+        return "No especificado"
+    
+    # Limpiar texto
+    clean_text = description_text.replace('\u00a0', ' ').replace('&nbsp;', ' ')
+    
+    # PATRONES ESPECIFICOS PARA MOTOS (basado en el HTML de ejemplo)
+    km_patterns = [
+        r'-\s*Kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',       # "- Kilómetros: 7.600"
+        r'-\s*Kilómetros:\s*(\d{1,6})',                   # "- Kilómetros: 7600"
+        r'Kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',           # "Kilómetros: 7.600"
+        r'Kilómetros:\s*(\d{1,6})',                       # "Kilómetros: 7600"
+        r'-\s*KM:\s*(\d{1,3}(?:\.\d{3})*)',               # "- KM: 7.600"
+        r'-\s*KM:\s*(\d{1,6})',                           # "- KM: 7600"
+        r'(\d{1,3}\.\d{3})\s*km',                         # "7.600 km"
+        r'(\d{1,6})\s*km(?!\w)'                           # "7600 km"
+    ]
+    
+    for pattern in km_patterns:
+        match = re.search(pattern, clean_text, re.IGNORECASE)
+        if match:
+            try:
+                km_text = match.group(1)
+                
+                # Manejar formato con puntos
+                if '.' in km_text and len(km_text.split('.')[-1]) == 3:
+                    km_value = int(km_text.replace('.', ''))
+                else:
+                    km_value = int(km_text)
+                
+                # Validacion para motos (rango mas amplio que coches)
+                if 0 < km_value <= 200000:
+                    return f"{km_value:,} km".replace(',', '.')
+                    
+            except:
+                continue
+                
+    return "No especificado"
+
+def extract_year_from_description_motos(description_text):
+    """NUEVO: Extrae año de la descripcion especifico para MOTOS"""
+    if not description_text:
+        return "No especificado"
+    
+    # Limpiar texto
+    clean_text = description_text.replace('\u00a0', ' ').replace('&nbsp;', ' ')
+    
+    # PATRONES ESPECIFICOS PARA MOTOS
+    year_patterns = [
+        r'-\s*Año:\s*(\d{4})',                            # "- Año: 2013"
+        r'Año:\s*(\d{4})',                                # "Año: 2013"
+        r'-\s*Year:\s*(\d{4})',                           # "- Year: 2013"
+        r'Year:\s*(\d{4})'                                # "Year: 2013"
+    ]
+    
+    for pattern in year_patterns:
+        match = re.search(pattern, clean_text, re.IGNORECASE)
+        if match:
+            try:
+                year_value = int(match.group(1))
+                if 1990 <= year_value <= 2025:
+                    return str(year_value)
+            except:
+                continue
+                
+    return "No especificado"
+
 def extract_price_robust(driver):
-    """Extrae precio con MULTIPLES ESTRATEGIAS ROBUSTAS"""
+    """Extrae precio con MULTIPLES ESTRATEGIAS ROBUSTAS - FALLBACK"""
     
     # ESTRATEGIA 1: Selectores de precio genericos
     price_selectors = [
@@ -178,36 +282,6 @@ def extract_price_robust(driver):
             price_int = int(float(price_value))
             if 1000 <= price_int <= 50000:
                 return f"{price_int:,} EUR".replace(',', '.')
-    except:
-        pass
-    
-    # ESTRATEGIA 3: Extraer de la descripcion completa
-    try:
-        desc_selectors = [
-            "[class*='description']",
-            "section", 
-            "div[class*='content']"
-        ]
-        
-        for selector in desc_selectors:
-            try:
-                elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                for element in elements:
-                    text = element.text
-                    price = extract_price_from_text(text)
-                    if price != "No especificado":
-                        return price
-            except:
-                continue
-    except:
-        pass
-    
-    # ESTRATEGIA 4: Buscar en todo el texto de la pagina
-    try:
-        page_text = driver.find_element(By.TAG_NAME, "body").text
-        price = extract_price_from_text(page_text)
-        if price != "No especificado":
-            return price
     except:
         pass
     
@@ -314,7 +388,7 @@ def extract_likes_robust(driver):
     return 0
 
 def extract_year_and_km_robust(driver):
-    """Extrae año y KM con DETECCION MEJORADA para KM bajos"""
+    """Extrae año y KM con DETECCION MEJORADA para KM bajos - FALLBACK"""
     year = "No especificado"
     km = "No especificado"
     
@@ -534,7 +608,7 @@ def find_and_click_load_more(driver):
     return False
 
 def get_user_ads(driver, user_url, account_name):
-    """Procesa todos los anuncios con extraccion ULTRA ROBUSTA"""
+    """CORREGIDO: Procesa anuncios con extraccion especifica para MOTOS"""
     print(f"\n[INFO] === PROCESANDO: {account_name} ===")
     print(f"[INFO] URL: {user_url}")
     
@@ -562,19 +636,49 @@ def get_user_ads(driver, user_url, account_name):
                     failed_ads += 1
                     continue
                 
-                # EXTRACCION ROBUSTA con multiples estrategias
+                # EXTRACCION ESPECIFICA PARA MOTOS
                 title = extract_title_robust(driver)
-                price = extract_price_robust(driver)
+                
+                # OBTENER DESCRIPCION COMPLETA (CLAVE PARA MOTOS)
+                description_text = ""
+                try:
+                    desc_element = driver.find_element(By.CSS_SELECTOR, "section.item-detail_ItemDetailTwoColumns__description__0DKb0")
+                    description_text = desc_element.text
+                except:
+                    try:
+                        desc_element = driver.find_element(By.CSS_SELECTOR, "[class*='description']")
+                        description_text = desc_element.text
+                    except:
+                        description_text = ""
+                
+                # EXTRAER DATOS DE LA DESCRIPCION (ESPECIFICO MOTOS)
+                precio = extract_price_from_description_motos(description_text)
+                km = extract_km_from_description_motos(description_text)
+                year = extract_year_from_description_motos(description_text)
+                
+                # FALLBACK: Si no encuentra en descripcion, usar metodos originales
+                if precio == "No especificado":
+                    precio = extract_price_robust(driver)
+                
+                if km == "No especificado":
+                    _, km_fallback = extract_year_and_km_robust(driver)
+                    if km_fallback != "No especificado":
+                        km = km_fallback
+                
+                if year == "No especificado":
+                    year_fallback, _ = extract_year_and_km_robust(driver)
+                    if year_fallback != "No especificado":
+                        year = year_fallback
+                
                 likes = extract_likes_robust(driver)
-                year, km = extract_year_and_km_robust(driver)
                 views = extract_views_robust(driver)
-                moto_id = create_moto_id(title, price, year, km)
+                moto_id = create_moto_id(title, precio, year, km)
                 
                 ad_data = {
                     'ID_Moto': moto_id,
                     'Cuenta': account_name,
                     'Titulo': title,
-                    'Precio': price,
+                    'Precio': precio,
                     'Ano': year,
                     'Kilometraje': km,
                     'Visitas': views,
