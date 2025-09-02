@@ -597,6 +597,11 @@ def get_user_ads(driver, user_url, account_name):
         successful_ads = 0
         failed_ads = 0
         
+        # CONTADORES PARA MONITORING RAPIDO
+        precios_ok = 0
+        km_ok = 0
+        ejemplos_mostrados = 0
+        
         for idx, ad_url in enumerate(tqdm(ad_urls, desc=f"Extrayendo {account_name}", colour="green")):
             try:
                 if not safe_navigate(driver, ad_url):
@@ -610,6 +615,17 @@ def get_user_ads(driver, user_url, account_name):
                 year, km = extract_year_and_km_robust(driver)
                 views = extract_views_robust(driver)
                 moto_id = create_moto_id(title, price, year, km)
+                
+                # CONTEO PARA MONITORING
+                if price != "No especificado":
+                    precios_ok += 1
+                if km != "No especificado":
+                    km_ok += 1
+                
+                # MOSTRAR EJEMPLOS DE LOS PRIMEROS 3 ANUNCIOS
+                if ejemplos_mostrados < 3 and price != "No especificado" and km != "No especificado":
+                    print(f"[EJEMPLO {ejemplos_mostrados + 1}] {title[:30]}... | {price} | {km} | {year}")
+                    ejemplos_mostrados += 1
                 
                 ad_data = {
                     'ID_Moto': moto_id,
@@ -627,6 +643,12 @@ def get_user_ads(driver, user_url, account_name):
                 all_ads.append(ad_data)
                 successful_ads += 1
                 
+                # MOSTRAR PROGRESO CADA 50 ANUNCIOS
+                if successful_ads % 50 == 0:
+                    precio_pct = (precios_ok / successful_ads * 100) if successful_ads > 0 else 0
+                    km_pct = (km_ok / successful_ads * 100) if successful_ads > 0 else 0
+                    print(f"[PROGRESO] {successful_ads} procesados | Precios: {precio_pct:.1f}% | KM: {km_pct:.1f}%")
+                
                 # SIN DELAY entre anuncios para máxima velocidad
                 
             except Exception as e:
@@ -635,8 +657,22 @@ def get_user_ads(driver, user_url, account_name):
     
     except Exception as e:
         print(f"[ERROR] Error procesando cuenta {account_name}: {str(e)}")
-     
-    print(f"[RESUMEN] {account_name}: {successful_ads} exitosos, {failed_ads} fallos")
+    
+    # RESUMEN DETALLADO POR CUENTA
+    if successful_ads > 0:
+        precio_pct = (precios_ok / successful_ads * 100)
+        km_pct = (km_ok / successful_ads * 100)
+        print(f"[RESUMEN] {account_name}: {successful_ads} exitosos, {failed_ads} fallos")
+        print(f"[CALIDAD] Precios: {precios_ok}/{successful_ads} ({precio_pct:.1f}%) | KM: {km_ok}/{successful_ads} ({km_pct:.1f}%)")
+        
+        # ALERTA SI CALIDAD BAJA
+        if precio_pct < 70:
+            print(f"[ALERTA] Baja extracción de precios en {account_name}")
+        if km_pct < 60:
+            print(f"[ALERTA] Baja extracción de KM en {account_name}")
+    else:
+        print(f"[RESUMEN] {account_name}: Sin anuncios procesados")
+        
     return all_ads
 
 def main():
@@ -724,16 +760,45 @@ def main():
             # Calcular porcentajes de extraccion exitosa
             titles_ok = len(df[df['Titulo'] != 'Titulo no encontrado'])
             prices_ok = len(df[df['Precio'] != 'No especificado'])
+            km_ok = len(df[df['Kilometraje'] != 'No especificado'])
+            years_ok = len(df[df['Ano'] != 'No especificado'])
             
             print(f"\nESTADISTICAS SCRAPER:")
             print(f"• Total anuncios procesados: {total_processed:,}")
             print(f"• Total visitas: {total_views:,}")
             print(f"• Total likes: {total_likes:,}")
-            print(f"• Titulos extraidos: {titles_ok}/{total_processed} ({titles_ok/total_processed*100:.1f}%)")
-            print(f"• Precios extraidos: {prices_ok}/{total_processed} ({prices_ok/total_processed*100:.1f}%)")
+            print(f"• Tiempo total: {elapsed_time:.1f} minutos")
+            print(f"\n📊 CALIDAD DE EXTRACCIÓN:")
+            print(f"• Titulos: {titles_ok}/{total_processed} ({titles_ok/total_processed*100:.1f}%) {'✅' if titles_ok/total_processed > 0.8 else '⚠️'}")
+            print(f"• Precios: {prices_ok}/{total_processed} ({prices_ok/total_processed*100:.1f}%) {'✅' if prices_ok/total_processed > 0.7 else '⚠️'}")
+            print(f"• Kilometraje: {km_ok}/{total_processed} ({km_ok/total_processed*100:.1f}%) {'✅' if km_ok/total_processed > 0.6 else '⚠️'}")
+            print(f"• Años: {years_ok}/{total_processed} ({years_ok/total_processed*100:.1f}%) {'✅' if years_ok/total_processed > 0.5 else '⚠️'}")
+            print(f"\n📈 PROMEDIOS:")
             print(f"• Media visitas: {df['Visitas'].mean():.1f}")
             print(f"• Media likes: {df['Likes'].mean():.1f}")
-            print(f"• Tiempo total: {elapsed_time:.1f} minutos")
+            
+            # MOSTRAR ALGUNOS EJEMPLOS FINALES
+            print(f"\n📋 EJEMPLOS DE DATOS EXTRAÍDOS:")
+            samples = df.head(3)
+            for i, (_, row) in enumerate(samples.iterrows(), 1):
+                print(f"  {i}. {row['Titulo'][:40]}...")
+                print(f"     💰 {row['Precio']} | 📏 {row['Kilometraje']} | 📅 {row['Ano']} | 👁️ {row['Visitas']} | ❤️ {row['Likes']}")
+            
+            # ALERTAS DE CALIDAD
+            alertas = []
+            if titles_ok/total_processed < 0.8:
+                alertas.append("Baja extracción de títulos")
+            if prices_ok/total_processed < 0.7:
+                alertas.append("Baja extracción de precios")
+            if km_ok/total_processed < 0.6:
+                alertas.append("Baja extracción de kilometraje")
+                
+            if alertas:
+                print(f"\n⚠️  ALERTAS DE CALIDAD:")
+                for alerta in alertas:
+                    print(f"   • {alerta}")
+            else:
+                print(f"\n✅ CALIDAD EXCELENTE: Todos los indicadores están bien")
             
             # Subir a Google Sheets
             fecha_extraccion = datetime.now().strftime("%d/%m/%Y")
