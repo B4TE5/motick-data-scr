@@ -146,17 +146,26 @@ def extract_title_robust(driver):
     return "Titulo no encontrado"
 
 def extract_price_robust(driver):
-    """Extrae precio con MULTIPLES ESTRATEGIAS ROBUSTAS"""
+    """Extrae precio usando SELECTORES EXITOSOS del scraper de COCHES"""
     
-    # ESTRATEGIA 1: Selectores de precio genericos
+    # ESPERAR A QUE CARGUEN LOS PRECIOS (copiado del scraper de coches)
+    try:
+        WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.XPATH, "//*[contains(text(), '€')]"))
+        )
+    except:
+        pass
+    
+    # ESTRATEGIA 1: SELECTORES CSS ESPECÍFICOS DE WALLAPOP (del scraper de coches exitoso)
     price_selectors = [
-        "span[class*='price']",
-        "div[class*='price']",
-        "span[class*='Price']",
-        "div[class*='Price']",
-        "[aria-label*='Price'] span",
-        "[class*='amount']",
-        "[class*='cost']"
+        "span.item-detail-price_ItemDetailPrice--standardFinanced__f9ceG",
+        ".item-detail-price_ItemDetailPrice--standardFinanced__f9ceG", 
+        "span.item-detail-price_ItemDetailPrice--standard__fMa16",
+        "span.item-detail-price_ItemDetailPrice--financed__LgMRH",
+        ".item-detail-price_ItemDetailPrice--financed__LgMRH",
+        "[class*='ItemDetailPrice']",
+        "[class*='standardFinanced'] span",
+        "[class*='financed'] span"
     ]
     
     for selector in price_selectors:
@@ -164,77 +173,86 @@ def extract_price_robust(driver):
             elements = driver.find_elements(By.CSS_SELECTOR, selector)
             for element in elements:
                 text = element.text.strip()
-                if 'EUR' in text or 'euros' in text.lower():
-                    price = extract_price_from_text(text)
+                if text and '€' in text:
+                    price = extract_price_from_text_wallapop(text)
                     if price != "No especificado":
                         return price
         except:
             continue
     
-    # ESTRATEGIA 2: Buscar en metadatos
+    # ESTRATEGIA 2: XPATH POR ETIQUETA "Precio al contado" (del scraper de coches)
     try:
-        price_meta = driver.find_element(By.XPATH, "//meta[@property='product:price:amount']")
-        price_value = price_meta.get_attribute("content")
-        if price_value:
-            price_int = int(float(price_value))
-            if 1000 <= price_int <= 50000:
-                return f"{price_int:,} EUR".replace(',', '.')
+        contado_elements = driver.find_elements(By.XPATH, 
+            "//span[text()='Precio al contado']/following::span[contains(@class, 'ItemDetailPrice') and contains(text(), '€')]"
+        )
+        
+        if contado_elements:
+            raw_price = contado_elements[0].text.strip()
+            return extract_price_from_text_wallapop(raw_price)
     except:
         pass
     
-    # ESTRATEGIA 3: Extraer de la descripcion completa
+    # ESTRATEGIA 3: BUSCAR CUALQUIER PRECIO EN WALLAPOP (método exitoso del scraper de coches)
     try:
-        desc_selectors = [
-            "[class*='description']",
-            "section", 
-            "div[class*='content']"
-        ]
+        price_elements = driver.find_elements(By.XPATH, "//*[contains(text(), '€')]")
         
-        for selector in desc_selectors:
+        valid_prices = []
+        for elem in price_elements[:10]:
             try:
-                elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                for element in elements:
-                    text = element.text
-                    price = extract_price_from_text(text)
-                    if price != "No especificado":
-                        return price
+                text = elem.text.strip().replace('&nbsp;', ' ').replace('\xa0', ' ')
+                if not text:
+                    continue
+                
+                # REGEX PARA CAPTURAR PRECIOS REALISTAS DE MOTOS
+                price_patterns = [
+                    r'(\d{1,3}(?:\.\d{3})+)\s*€',
+                    r'(\d{1,6})\s*€'
+                ]
+                
+                for pattern in price_patterns:
+                    price_matches = re.findall(pattern, text)
+                    for price_match in price_matches:
+                        try:
+                            price_clean = price_match.replace('.', '')
+                            price_value = int(price_clean)
+                            
+                            # RANGO PARA MOTOS: 500€ - 60,000€
+                            if 500 <= price_value <= 60000:
+                                formatted_price = f"{price_value:,}".replace(',', '.') + " €" if price_value >= 1000 else f"{price_value} €"
+                                valid_prices.append((price_value, formatted_price))
+                        except:
+                            continue
             except:
                 continue
-    except:
-        pass
-    
-    # ESTRATEGIA 4: Buscar en todo el texto de la pagina
-    try:
-        page_text = driver.find_element(By.TAG_NAME, "body").text
-        price = extract_price_from_text(page_text)
-        if price != "No especificado":
-            return price
+        
+        # Tomar el precio más alto como precio principal
+        if valid_prices:
+            valid_prices = sorted(set(valid_prices), key=lambda x: x[0], reverse=True)
+            return valid_prices[0][1]
+                    
     except:
         pass
     
     return "No especificado"
 
-def extract_price_from_text(text):
-    """Extrae precio de cualquier texto con REGEX AGRESIVOS"""
+def extract_price_from_text_wallapop(text):
+    """Extrae precio de Wallapop - ADAPTADO del scraper de coches exitoso"""
     if not text:
         return "No especificado"
     
-    # Limpiar texto
-    clean_text = text.replace('\u00a0', ' ').replace('&nbsp;', ' ')
+    # Limpiar texto (como en el scraper de coches exitoso)
+    clean_text = text.replace('&nbsp;', ' ').replace('\xa0', ' ').strip()
+    if not clean_text:
+        return "No especificado"
     
-    # PATRONES MULTIPLES para capturar diferentes formatos
+    # REGEX ESPECÍFICOS PARA WALLAPOP (copiados del scraper de coches exitoso)
     price_patterns = [
-        r'precio[:\s]*(\d{1,2}\.?\d{3,6})\s*EUR',           # "Precio: 7.690 EUR"
-        r'-\s*precio[:\s]*(\d{1,2}\.?\d{3,6})\s*EUR',       # "- Precio: 7.690 EUR"
-        r'(\d{1,2}\.\d{3})\s*EUR',                          # "7.690 EUR"
-        r'(\d{4,6})\s*EUR',                                 # "7690 EUR"
-        r'(\d{1,2})\s*\.\s*(\d{3})\s*EUR',                  # "7 . 690 EUR"
-        r'(\d{1,2}),(\d{3})\s*EUR',                         # "7,690 EUR"
-        r'EUR\s*(\d{1,2}\.?\d{3,6})',                       # "EUR 7690"
-        r'(\d{1,2}\.?\d{3,6})\s*euros?',                  # "7690 euros"
-        r'vale\s+(\d{1,2}\.?\d{3,6})',                    # "vale 7690"
-        r'cuesta\s+(\d{1,2}\.?\d{3,6})',                  # "cuesta 7690"
-        r'por\s+(\d{1,2}\.?\d{3,6})\s*EUR',                 # "por 7690 EUR"
+        r'(\d{1,3}(?:\.\d{3})+)\s*€',           # "7.690 €"
+        r'(\d{4,6})\s*€',                       # "7690 €"
+        r'(\d{1,2})\s*\.\s*(\d{3})\s*€',        # "7 . 690 €"
+        r'(\d{1,2}),(\d{3})\s*€',               # "7,690 €"
+        r'€\s*(\d{1,2}\.?\d{3,6})',             # "€ 7690"
+        r'(\d{1,2}\.?\d{3,6})\s*euros?',        # "7690 euros"
     ]
     
     for pattern in price_patterns:
@@ -247,9 +265,9 @@ def extract_price_from_text(text):
                     price_str = match.group(1).replace('.', '').replace(',', '')
                     price_value = int(price_str)
                 
-                # Validar rango realista para motos
+                # RANGO PARA MOTOS: 500€ - 60,000€
                 if 500 <= price_value <= 60000:
-                    return f"{price_value:,} EUR".replace(',', '.')
+                    return f"{price_value:,} €".replace(',', '.')
             except:
                 continue
     
@@ -315,103 +333,72 @@ def extract_likes_robust(driver):
     return 0
 
 def extract_year_and_km_robust(driver):
-    """Extrae año y KM con DETECCION MEJORADA para KM bajos"""
+    """Extrae año y KM usando SELECTORES EXITOSOS del scraper de COCHES"""
     year = "No especificado"
     km = "No especificado"
     
-    # Obtener TODO el texto de la pagina
     try:
-        # ESTRATEGIA MULTIPLE: Combinar descripcion + toda la pagina
-        full_text = ""
-        
-        # 1. Descripcion especifica
-        desc_selectors = [
-            "[class*='description']",
-            "section[class*='description']",
-            "div[class*='content']",
-            "section"
-        ]
-        
-        for selector in desc_selectors:
-            try:
-                elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                for element in elements[:3]:  # Solo los primeros 3
-                    full_text += " " + element.text
-            except:
-                continue
-        
-        # 2. Texto completo de la pagina
+        # EXTRAER KILOMETROS CON SELECTOR ESPECÍFICO DE WALLAPOP (del scraper exitoso)
         try:
-            page_text = driver.find_element(By.TAG_NAME, "body").text
-            full_text += " " + page_text
+            km_section = driver.find_element(By.XPATH, "//span[text()='Kilómetros']/following-sibling::span")
+            km_text = km_section.text.strip()
+            if km_text and km_text.replace('.', '').replace(',', '').replace(' ', '').isdigit():
+                km_clean = km_text.replace('.', '').replace(',', '').replace(' ', '')
+                km_value = int(km_clean)
+                km = f"{km_value:,} km".replace(',', '.')
         except:
-            pass
-        
-        text_lower = full_text.lower()
-        
-        # EXTRAER AÑO con patrones multiples
-        year_patterns = [
-            r'año[:\s]*(\d{4})',                    # "Año: 2023"
-            r'-\s*año[:\s]*(\d{4})',                # "- Año: 2023"
-            r'año\s+(\d{4})',                       # "año 2023"
-            r'modelo\s+(\d{4})',                    # "modelo 2023"
-            r'del\s+año\s+(\d{4})',                 # "del año 2023"
-            r'fabricacion[:\s]+(\d{4})',            # "fabricacion: 2023"
-            r'(\d{4})\s*(?:cc|cilindros|EUR)',      # "2023 cc" contexto
-            r'matriculacion[:\s]+(\d{4})'           # "matriculacion: 2023"
-        ]
-        
-        for pattern in year_patterns:
-            match = re.search(pattern, text_lower)
-            if match:
-                try:
-                    year_value = int(match.group(1))
-                    if 1990 <= year_value <= 2025:  # Rango mas amplio
-                        year = str(year_value)
+            # Fallback optimizado del scraper de coches exitoso
+            try:
+                html_content = driver.page_source
+                km_patterns = [
+                    r'Kilómetros["\s:>]*</span><span[^>]*>(\d+(?:[\.\s]\d+)*)</span>',
+                    r'kilómetros["\s:>]*</span><span[^>]*>(\d+(?:[\.\s]\d+)*)</span>',
+                    r'>(\d{3,7})\s*km',
+                    r'(\d{3,7})\s*kilómetros'
+                ]
+                
+                for pattern in km_patterns:
+                    matches = re.findall(pattern, html_content, re.IGNORECASE)
+                    for match in matches:
+                        try:
+                            km_clean = match.replace('.', '').replace(',', '').replace(' ', '')
+                            km_value = int(km_clean)
+                            if 100 <= km_value <= 999999:  # Rango ampliado como en scraper exitoso
+                                km = f"{km_value:,} km".replace(',', '.')
+                                break
+                        except:
+                            continue
+                    if km != "No especificado":
                         break
-                except:
-                    continue
+            except:
+                pass
         
-        # EXTRAER KILOMETRAJE con DETECCION MEJORADA para KM bajos
-        km_patterns = [
-            r'kilometros[:\s]*(\d{1,3}(?:\.\d{3})+)',      # "Kilometros: 42.373"
-            r'kilometros[:\s]*(\d{1,6})',                  # "Kilometros: 200" (KM BAJOS)
-            r'-\s*kilometros[:\s]*(\d{1,6})',              # "- Kilometros: 10"
-            r'km[:\s]*(\d{1,3}(?:\.\d{3})+)',              # "km: 42.373"
-            r'km[:\s]*(\d{1,6})',                          # "km: 200" (KM BAJOS)
-            r'(\d{1,3}\.\d{3})\s*km',                      # "42.373 km"
-            r'(\d{1,6})\s*km(?!\w)',                       # "200 km" (sin otras letras despues)
-            r'(\d+)\s*mil\s*km',                           # "42 mil km"
-            r'recorridos[:\s]*(\d{1,6})',                  # "recorridos: 200"
-            r'tiene[:\s]*(\d{1,6})\s*km',                  # "tiene 200 km"
-            r'solo[:\s]*(\d{1,6})\s*km',                   # "solo 200 km"
-            r'unicamente[:\s]*(\d{1,6})\s*km'              # "unicamente 10 km"
-        ]
-        
-        for pattern in km_patterns:
-            match = re.search(pattern, text_lower)
-            if match:
-                try:
-                    km_text = match.group(1)
-                    
-                    # Manejar diferentes formatos
-                    if '.' in km_text and len(km_text.split('.')[-1]) == 3:
-                        # Formato 42.373
-                        km_value = int(km_text.replace('.', ''))
-                    elif 'mil' in pattern.lower():
-                        # Formato "42 mil km"
-                        km_value = int(km_text) * 1000
-                    else:
-                        # Formato directo
-                        km_value = int(km_text)
-                    
-                    # VALIDACION MEJORADA para incluir KM muy bajos
-                    if 0 < km_value <= 600000:  # Rango muy amplio
-                        km = f"{km_value:,} km".replace(',', '.')
+        # EXTRAER AÑO CON SELECTOR ESPECÍFICO DE WALLAPOP (del scraper exitoso)
+        try:
+            year_section = driver.find_element(By.XPATH, "//span[text()='Año']/following-sibling::span")
+            year_text = year_section.text.strip()
+            if year_text.isdigit() and 1990 <= int(year_text) <= 2025:
+                year = year_text
+        except:
+            # Fallback del scraper exitoso
+            try:
+                html_content = driver.page_source
+                year_patterns = [
+                    r'Año["\s:>]*</span><span[^>]*>(\d{4})</span>',
+                    r'año["\s:>]*</span><span[^>]*>(\d{4})</span>'
+                ]
+                
+                for pattern in year_patterns:
+                    matches = re.findall(pattern, html_content, re.IGNORECASE)
+                    for match in matches:
+                        year_value = int(match)
+                        if 1990 <= year_value <= 2025:
+                            year = str(year_value)
+                            break
+                    if year != "No especificado":
                         break
-                        
-                except:
-                    continue
+            except:
+                pass
                     
     except Exception as e:
         pass
