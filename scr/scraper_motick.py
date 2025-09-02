@@ -2,8 +2,9 @@
 Scraper Motick - Version Google Sheets CORREGIDA
 Extrae datos de motos MOTICK y los sube directamente a Google Sheets
 
-Version: 1.1 - CORREGIDA para extraer precios y KM de descripcion
+Version: 1.1 - Automatizada para GitHub Actions con BOTÓN CORREGIDO
 Basado en: SCR_DATA_MOTICK.py original
+CORRECCIÓN: Selectores mejorados para botón "Ver más productos"
 """
 
 import time
@@ -144,112 +145,8 @@ def extract_title_robust(driver):
     
     return "Titulo no encontrado"
 
-def extract_price_from_description_motos(description_text):
-    """NUEVO: Extrae precio de la descripcion especifico para MOTOS"""
-    if not description_text:
-        return "No especificado"
-    
-    # Limpiar texto
-    clean_text = description_text.replace('\u00a0', ' ').replace('&nbsp;', ' ').replace('&euro;', 'EUR').replace('€', 'EUR')
-    
-    # PATRONES ESPECIFICOS PARA MOTOS (basado en el HTML de ejemplo)
-    price_patterns = [
-        r'-\s*Precio:\s*(\d{1,2}\.?\d{3,6})\s*EUR',       # "- Precio: 5.490€"
-        r'-\s*Precio:\s*(\d{1,2}\.?\d{3,6})',             # "- Precio: 5490"
-        r'Precio:\s*(\d{1,2}\.?\d{3,6})\s*EUR',           # "Precio: 5.490€"
-        r'Precio:\s*(\d{1,2}\.?\d{3,6})',                 # "Precio: 5490"
-        r'(\d{1,2}\.\d{3})\s*EUR',                        # "5.490 EUR"
-        r'(\d{4,6})\s*EUR',                               # "5490 EUR"
-        r'(\d{1,2}\.\d{3})\s*€',                          # "5.490 €"
-        r'(\d{4,6})\s*€'                                  # "5490 €"
-    ]
-    
-    for pattern in price_patterns:
-        matches = re.finditer(pattern, clean_text, re.IGNORECASE)
-        for match in matches:
-            try:
-                price_str = match.group(1).replace('.', '')
-                price_value = int(price_str)
-                
-                # Validar rango realista para motos
-                if 500 <= price_value <= 80000:
-                    return f"{price_value:,} EUR".replace(',', '.')
-            except:
-                continue
-    
-    return "No especificado"
-
-def extract_km_from_description_motos(description_text):
-    """NUEVO: Extrae KM de la descripcion especifico para MOTOS"""
-    if not description_text:
-        return "No especificado"
-    
-    # Limpiar texto
-    clean_text = description_text.replace('\u00a0', ' ').replace('&nbsp;', ' ')
-    
-    # PATRONES ESPECIFICOS PARA MOTOS (basado en el HTML de ejemplo)
-    km_patterns = [
-        r'-\s*Kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',       # "- Kilómetros: 7.600"
-        r'-\s*Kilómetros:\s*(\d{1,6})',                   # "- Kilómetros: 7600"
-        r'Kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',           # "Kilómetros: 7.600"
-        r'Kilómetros:\s*(\d{1,6})',                       # "Kilómetros: 7600"
-        r'-\s*KM:\s*(\d{1,3}(?:\.\d{3})*)',               # "- KM: 7.600"
-        r'-\s*KM:\s*(\d{1,6})',                           # "- KM: 7600"
-        r'(\d{1,3}\.\d{3})\s*km',                         # "7.600 km"
-        r'(\d{1,6})\s*km(?!\w)'                           # "7600 km"
-    ]
-    
-    for pattern in km_patterns:
-        match = re.search(pattern, clean_text, re.IGNORECASE)
-        if match:
-            try:
-                km_text = match.group(1)
-                
-                # Manejar formato con puntos
-                if '.' in km_text and len(km_text.split('.')[-1]) == 3:
-                    km_value = int(km_text.replace('.', ''))
-                else:
-                    km_value = int(km_text)
-                
-                # Validacion para motos (rango mas amplio que coches)
-                if 0 < km_value <= 200000:
-                    return f"{km_value:,} km".replace(',', '.')
-                    
-            except:
-                continue
-                
-    return "No especificado"
-
-def extract_year_from_description_motos(description_text):
-    """NUEVO: Extrae año de la descripcion especifico para MOTOS"""
-    if not description_text:
-        return "No especificado"
-    
-    # Limpiar texto
-    clean_text = description_text.replace('\u00a0', ' ').replace('&nbsp;', ' ')
-    
-    # PATRONES ESPECIFICOS PARA MOTOS
-    year_patterns = [
-        r'-\s*Año:\s*(\d{4})',                            # "- Año: 2013"
-        r'Año:\s*(\d{4})',                                # "Año: 2013"
-        r'-\s*Year:\s*(\d{4})',                           # "- Year: 2013"
-        r'Year:\s*(\d{4})'                                # "Year: 2013"
-    ]
-    
-    for pattern in year_patterns:
-        match = re.search(pattern, clean_text, re.IGNORECASE)
-        if match:
-            try:
-                year_value = int(match.group(1))
-                if 1990 <= year_value <= 2025:
-                    return str(year_value)
-            except:
-                continue
-                
-    return "No especificado"
-
 def extract_price_robust(driver):
-    """Extrae precio con MULTIPLES ESTRATEGIAS ROBUSTAS - FALLBACK"""
+    """Extrae precio con MULTIPLES ESTRATEGIAS ROBUSTAS"""
     
     # ESTRATEGIA 1: Selectores de precio genericos
     price_selectors = [
@@ -282,6 +179,36 @@ def extract_price_robust(driver):
             price_int = int(float(price_value))
             if 1000 <= price_int <= 50000:
                 return f"{price_int:,} EUR".replace(',', '.')
+    except:
+        pass
+    
+    # ESTRATEGIA 3: Extraer de la descripcion completa
+    try:
+        desc_selectors = [
+            "[class*='description']",
+            "section", 
+            "div[class*='content']"
+        ]
+        
+        for selector in desc_selectors:
+            try:
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                for element in elements:
+                    text = element.text
+                    price = extract_price_from_text(text)
+                    if price != "No especificado":
+                        return price
+            except:
+                continue
+    except:
+        pass
+    
+    # ESTRATEGIA 4: Buscar en todo el texto de la pagina
+    try:
+        page_text = driver.find_element(By.TAG_NAME, "body").text
+        price = extract_price_from_text(page_text)
+        if price != "No especificado":
+            return price
     except:
         pass
     
@@ -388,7 +315,7 @@ def extract_likes_robust(driver):
     return 0
 
 def extract_year_and_km_robust(driver):
-    """Extrae año y KM con DETECCION MEJORADA para KM bajos - FALLBACK"""
+    """Extrae año y KM con DETECCION MEJORADA para KM bajos"""
     year = "No especificado"
     km = "No especificado"
     
@@ -535,80 +462,172 @@ def create_moto_id(title, price, year, km):
     except:
         return hashlib.md5(str(time.time()).encode()).hexdigest()[:10]
 
-def smart_load_all_ads(driver, expected_count=200):
-    """Carga todos los anuncios de forma inteligente y rapida"""
-    MOTOS_POR_PAGINA = 40
+def find_and_click_load_more(driver):
+    """
+    FUNCIÓN CORREGIDA: Busca y hace clic en 'Ver más productos' con selectores PRECISOS
+    Basado en el HTML real: <walla-button text="Ver más productos" class="hydrated">
+    """
     
-    paginas_necesarias = (expected_count + MOTOS_POR_PAGINA - 1) // MOTOS_POR_PAGINA
-    clics_necesarios = max(0, paginas_necesarias - 1)
-    
-    print(f"[SMART] Objetivo: {expected_count} anuncios")
-    print(f"[SMART] Clics requeridos: {clics_necesarios}")
-    
-    # Scroll inicial rapido
-    for i in range(2):
-        driver.execute_script("window.scrollBy(0, 1200);")
-        time.sleep(0.2)
-    
-    # Realizar clics necesarios
-    for clic_num in range(clics_necesarios):
-        print(f"[SMART] Clic {clic_num + 1}/{clics_necesarios}")
+    # SELECTORES CORREGIDOS basados en el HTML real
+    selectors = [
+        # Selector principal - walla-button con texto exacto
+        ('css', 'walla-button[text="Ver más productos"]'),
         
+        # Selector alternativo - walla-button con texto parcial
+        ('css', 'walla-button[text*="Ver más"]'),
+        
+        # Button interno con clase específica
+        ('css', 'button.walla-button__button'),
+        ('css', '.walla-button__button'),
+        
+        # XPath para walla-button
+        ('xpath', '//walla-button[@text="Ver más productos"]'),
+        ('xpath', '//walla-button[contains(@text, "Ver más")]'),
+        
+        # XPath para span con texto dentro del botón
+        ('xpath', '//span[text()="Ver más productos"]/ancestor::button'),
+        ('xpath', '//span[contains(text(), "Ver más")]/ancestor::button'),
+        ('xpath', '//span[text()="Ver más productos"]/ancestor::walla-button'),
+        
+        # Div container con justify-content-center
+        ('css', '.d-flex.justify-content-center walla-button'),
+        ('css', 'div[class*="justify-content-center"] walla-button'),
+        
+        # Fallback genéricos
+        ('xpath', '//button[contains(@class, "walla-button")]'),
+        ('xpath', '//*[contains(text(), "Ver más productos")]'),
+        ('css', '[class*="load-more"]'),
+        ('css', '[class*="more-items"]')
+    ]
+    
+    print("[DEBUG] Buscando botón 'Ver más productos'...")
+    
+    for i, (selector_type, selector) in enumerate(selectors):
+        try:
+            print(f"[DEBUG] Probando selector {i+1}: {selector_type} = {selector}")
+            
+            if selector_type == 'css':
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)
+            else:  # xpath
+                elements = driver.find_elements(By.XPATH, selector)
+            
+            print(f"[DEBUG] Encontrados {len(elements)} elementos")
+            
+            for j, element in enumerate(elements):
+                try:
+                    # Verificar si el elemento está visible y habilitado
+                    if not element.is_displayed():
+                        print(f"[DEBUG] Elemento {j+1} no está visible")
+                        continue
+                        
+                    if not element.is_enabled():
+                        print(f"[DEBUG] Elemento {j+1} no está habilitado")
+                        continue
+                    
+                    # Obtener texto para verificar
+                    element_text = element.text.strip().lower()
+                    print(f"[DEBUG] Elemento {j+1} texto: '{element_text}'")
+                    
+                    # Verificar que contiene "ver más" o es un botón de carga
+                    if 'ver más' in element_text or 'ver mas' in element_text or not element_text:
+                        print(f"[DEBUG] Intentando hacer clic en elemento {j+1}")
+                        
+                        # Scroll hacia el elemento
+                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+                        time.sleep(0.5)
+                        
+                        # Intentar clic normal
+                        try:
+                            element.click()
+                            print(f"[SUCCESS] Clic exitoso con {selector_type}: {selector}")
+                            time.sleep(1)
+                            return True
+                        except:
+                            # Intentar clic con JavaScript
+                            try:
+                                driver.execute_script("arguments[0].click();", element)
+                                print(f"[SUCCESS] Clic JS exitoso con {selector_type}: {selector}")
+                                time.sleep(1)
+                                return True
+                            except Exception as e:
+                                print(f"[DEBUG] Error en clic JS: {str(e)}")
+                                continue
+                    else:
+                        print(f"[DEBUG] Elemento {j+1} no parece ser botón de 'Ver más'")
+                        
+                except Exception as e:
+                    print(f"[DEBUG] Error procesando elemento {j+1}: {str(e)}")
+                    continue
+                    
+        except Exception as e:
+            print(f"[DEBUG] Error con selector {selector}: {str(e)}")
+            continue
+    
+    print("[DEBUG] No se pudo encontrar/hacer clic en botón 'Ver más productos'")
+    return False
+
+def smart_load_all_ads(driver, expected_count=200, max_clicks=10):
+    """
+    FUNCIÓN MEJORADA: Carga todos los anuncios de forma inteligente y robusta
+    """
+    print(f"[SMART] Objetivo: {expected_count} anuncios, máximo {max_clicks} clics")
+    
+    # Scroll inicial para cargar contenido básico
+    for i in range(3):
+        driver.execute_script("window.scrollBy(0, 1000);")
+        time.sleep(0.3)
+    
+    initial_count = len(driver.find_elements(By.XPATH, "//a[contains(@href, '/item/')]"))
+    print(f"[SMART] Anuncios iniciales cargados: {initial_count}")
+    
+    clicks_realizados = 0
+    last_count = initial_count
+    
+    for click_num in range(max_clicks):
+        print(f"\n[SMART] Intento de clic {click_num + 1}/{max_clicks}")
+        
+        # Scroll hacia abajo para asegurar que el botón esté visible
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(0.8)
+        time.sleep(1)
         
+        # Intentar hacer clic en "Ver más productos"
         if find_and_click_load_more(driver):
-            time.sleep(2)
-            print(f"[SMART] Clic exitoso")
+            clicks_realizados += 1
+            print(f"[SMART] Clic {clicks_realizados} realizado exitosamente")
+            
+            # Esperar a que se cargue nuevo contenido
+            time.sleep(3)
+            
+            # Verificar si se cargó más contenido
+            new_count = len(driver.find_elements(By.XPATH, "//a[contains(@href, '/item/')]"))
+            print(f"[SMART] Anuncios después del clic: {new_count}")
+            
+            if new_count > last_count:
+                print(f"[SMART] Se cargaron {new_count - last_count} anuncios nuevos")
+                last_count = new_count
+                
+                # Si hemos alcanzado el objetivo, parar
+                if new_count >= expected_count:
+                    print(f"[SMART] Objetivo alcanzado: {new_count} >= {expected_count}")
+                    break
+            else:
+                print(f"[SMART] No se cargaron anuncios nuevos, posible fin del contenido")
+                break
         else:
-            print(f"[SMART] No hay mas contenido")
+            print(f"[SMART] No se pudo hacer clic, posible fin del contenido")
             break
     
     final_count = len(driver.find_elements(By.XPATH, "//a[contains(@href, '/item/')]"))
-    print(f"[SMART] Elementos cargados: {final_count}")
+    print(f"\n[SMART] RESUMEN:")
+    print(f"  • Anuncios iniciales: {initial_count}")
+    print(f"  • Clics realizados: {clicks_realizados}")
+    print(f"  • Anuncios finales: {final_count}")
+    print(f"  • Anuncios nuevos cargados: {final_count - initial_count}")
     
     return final_count
 
-def find_and_click_load_more(driver):
-    """Busca y hace clic en 'Ver mas productos' con selectores multiples"""
-    selectors = [
-        'walla-button[text*="Ver mas"]',
-        'button[text*="Ver mas"]',
-        '//walla-button[@text="Ver mas productos"]',
-        '//button[contains(text(), "Ver mas")]',
-        '//span[text()="Ver mas productos"]/..',
-        '//div[contains(text(), "Ver mas")]',
-        '[class*="load-more"]',
-        '[class*="more-items"]'
-    ]
-    
-    for selector in selectors:
-        try:
-            if selector.startswith('//'):
-                elements = driver.find_elements(By.XPATH, selector)
-            else:
-                elements = driver.find_elements(By.CSS_SELECTOR, selector)
-            
-            for element in elements:
-                if element.is_displayed() and element.is_enabled():
-                    try:
-                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
-                        time.sleep(0.3)
-                        element.click()
-                        return True
-                    except:
-                        try:
-                            driver.execute_script("arguments[0].click();", element)
-                            return True
-                        except:
-                            continue
-        except:
-            continue
-    
-    return False
-
 def get_user_ads(driver, user_url, account_name):
-    """CORREGIDO: Procesa anuncios con extraccion especifica para MOTOS"""
+    """Procesa todos los anuncios con extraccion ULTRA ROBUSTA"""
     print(f"\n[INFO] === PROCESANDO: {account_name} ===")
     print(f"[INFO] URL: {user_url}")
     
@@ -620,12 +639,14 @@ def get_user_ads(driver, user_url, account_name):
             return all_ads
         
         accept_cookies(driver)
-        final_count = smart_load_all_ads(driver)
+        
+        # CARGA MEJORADA de anuncios con más clics
+        final_count = smart_load_all_ads(driver, expected_count=300, max_clicks=15)
         
         ad_elements = driver.find_elements(By.XPATH, "//a[contains(@href, '/item/')]")
         ad_urls = list(set([elem.get_attribute('href') for elem in ad_elements if elem.get_attribute('href')]))
         
-        print(f"[INFO] Enlaces obtenidos: {len(ad_urls)}")
+        print(f"[INFO] Enlaces únicos obtenidos: {len(ad_urls)}")
         
         successful_ads = 0
         failed_ads = 0
@@ -636,49 +657,19 @@ def get_user_ads(driver, user_url, account_name):
                     failed_ads += 1
                     continue
                 
-                # EXTRACCION ESPECIFICA PARA MOTOS
+                # EXTRACCION ROBUSTA con multiples estrategias
                 title = extract_title_robust(driver)
-                
-                # OBTENER DESCRIPCION COMPLETA (CLAVE PARA MOTOS)
-                description_text = ""
-                try:
-                    desc_element = driver.find_element(By.CSS_SELECTOR, "section.item-detail_ItemDetailTwoColumns__description__0DKb0")
-                    description_text = desc_element.text
-                except:
-                    try:
-                        desc_element = driver.find_element(By.CSS_SELECTOR, "[class*='description']")
-                        description_text = desc_element.text
-                    except:
-                        description_text = ""
-                
-                # EXTRAER DATOS DE LA DESCRIPCION (ESPECIFICO MOTOS)
-                precio = extract_price_from_description_motos(description_text)
-                km = extract_km_from_description_motos(description_text)
-                year = extract_year_from_description_motos(description_text)
-                
-                # FALLBACK: Si no encuentra en descripcion, usar metodos originales
-                if precio == "No especificado":
-                    precio = extract_price_robust(driver)
-                
-                if km == "No especificado":
-                    _, km_fallback = extract_year_and_km_robust(driver)
-                    if km_fallback != "No especificado":
-                        km = km_fallback
-                
-                if year == "No especificado":
-                    year_fallback, _ = extract_year_and_km_robust(driver)
-                    if year_fallback != "No especificado":
-                        year = year_fallback
-                
+                price = extract_price_robust(driver)
                 likes = extract_likes_robust(driver)
+                year, km = extract_year_and_km_robust(driver)
                 views = extract_views_robust(driver)
-                moto_id = create_moto_id(title, precio, year, km)
+                moto_id = create_moto_id(title, price, year, km)
                 
                 ad_data = {
                     'ID_Moto': moto_id,
                     'Cuenta': account_name,
                     'Titulo': title,
-                    'Precio': precio,
+                    'Precio': price,
                     'Ano': year,
                     'Kilometraje': km,
                     'Visitas': views,
@@ -713,6 +704,7 @@ def main():
     print("   • Subida directa a Google Sheets")
     print("   • Automatizado para GitHub Actions")
     print("   • Deteccion de KM bajos y datos precisos")
+    print("   • CORREGIDO: Botón 'Ver más productos' funcional")
     print()
     
     try:
@@ -748,7 +740,7 @@ def main():
         driver = setup_browser()
         
         all_results = []
-        total_expected = len(motick_accounts) * 180  # Estimacion promedio
+        total_expected = len(motick_accounts) * 250  # Estimacion mas realista
         
         print(f"[INFO] Procesando {len(motick_accounts)} cuentas MOTICK")
         
@@ -765,7 +757,7 @@ def main():
                 
                 print(f"[RESUMEN] {account_name}: {len(account_ads)} anuncios procesados")
                 
-                time.sleep(1)  # Pausa minima entre cuentas
+                time.sleep(2)  # Pausa entre cuentas
                 
             except Exception as e:
                 print(f"[ERROR] Error procesando {account_name}: {str(e)}")
