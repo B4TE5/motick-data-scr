@@ -1,0 +1,130 @@
+name: 🔍 Diagnóstico Google Sheets
+
+on:
+  workflow_dispatch:
+    inputs:
+      accion:
+        description: 'Acción a realizar'
+        required: true
+        default: 'diagnosticar'
+        type: choice
+        options:
+          - diagnosticar
+          - test_conexion
+          - verificar_permisos
+
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Ejecutar Diagnóstico
+      env:
+        GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+        GOOGLE_SHEET_ID_MOTICK: ${{ secrets.GOOGLE_SHEET_ID_MOTICK }}
+      run: |
+        cd src
+        python -c "
+        import os
+        import json
+        from google_sheets_motick import GoogleSheetsMotick
+
+        print('='*80)
+        print('DIAGNÓSTICO COMPLETO - GOOGLE SHEETS MOTICK')
+        print('='*80)
+
+        # Verificar variables de entorno
+        credentials_json = os.getenv('GOOGLE_CREDENTIALS_JSON')
+        sheet_id = os.getenv('GOOGLE_SHEET_ID_MOTICK')
+
+        print(f'🔍 VERIFICANDO CONFIGURACIÓN:')
+        print(f'   GOOGLE_CREDENTIALS_JSON: {\"✅ Configurado\" if credentials_json else \"❌ Faltante\"}')
+        print(f'   GOOGLE_SHEET_ID_MOTICK: {sheet_id if sheet_id else \"❌ Faltante\"}')
+
+        if not credentials_json:
+            print('❌ ERROR CRÍTICO: GOOGLE_CREDENTIALS_JSON no encontrado en secrets')
+            exit(1)
+        
+        if not sheet_id:
+            print('❌ ERROR CRÍTICO: GOOGLE_SHEET_ID_MOTICK no encontrado en secrets')
+            exit(1)
+
+        # Verificar service account email
+        try:
+            cred_dict = json.loads(credentials_json)
+            service_email = cred_dict.get('client_email', 'NO_ENCONTRADO')
+            project_id = cred_dict.get('project_id', 'NO_ENCONTRADO')
+            
+            print(f'🤖 SERVICE ACCOUNT:')
+            print(f'   Email: {service_email}')
+            print(f'   Proyecto: {project_id}')
+            
+        except Exception as e:
+            print(f'❌ ERROR: Credenciales JSON inválidas: {str(e)}')
+            exit(1)
+
+        # Crear handler y probar conexión
+        try:
+            gs_handler = GoogleSheetsMotick(
+                credentials_json_string=credentials_json,
+                sheet_id=sheet_id
+            )
+            
+            # Ejecutar test completo
+            exito = gs_handler.test_connection()
+            
+            if exito:
+                print(f'\\n🎉 DIAGNÓSTICO: ✅ SIN PROBLEMAS')
+                print(f'El sistema debería funcionar correctamente')
+            else:
+                print(f'\\n⚠️  DIAGNÓSTICO: ❌ PROBLEMAS ENCONTRADOS')
+                print(f'Sigue las instrucciones de solución mostradas arriba')
+                exit(1)
+                
+        except Exception as e:
+            print(f'❌ ERROR CRÍTICO EN DIAGNÓSTICO: {str(e)}')
+            import traceback
+            traceback.print_exc()
+            exit(1)
+        "
+        
+    - name: Mostrar Soluciones
+      if: failure()
+      run: |
+        echo ""
+        echo "🚨 SOLUCIONES PARA PROBLEMAS COMUNES:"
+        echo ""
+        echo "1️⃣ PROBLEMA: Google Sheet no compartido"
+        echo "   SOLUCIÓN:"
+        echo "   • Abre: https://docs.google.com/spreadsheets/d/${{ secrets.GOOGLE_SHEET_ID_MOTICK }}"
+        echo "   • Clic en 'Compartir' (botón azul)"
+        echo "   • Agregar email: motick-scraper-bot@motick-data-scraper.iam.gserviceaccount.com"
+        echo "   • Permisos: Editor"
+        echo "   • Clic en 'Enviar'"
+        echo ""
+        echo "2️⃣ PROBLEMA: APIs no habilitadas"
+        echo "   SOLUCIÓN:"
+        echo "   • Ve a: https://console.cloud.google.com/apis/dashboard?project=motick-data-scraper"
+        echo "   • Habilitar: Google Sheets API"
+        echo "   • Habilitar: Google Drive API"
+        echo ""
+        echo "3️⃣ PROBLEMA: Sheet no es nativo de Google"
+        echo "   SOLUCIÓN:"
+        echo "   • Abre el sheet en Google Drive"
+        echo "   • Clic derecho → Abrir con → Google Sheets"
+        echo "   • Archivo → Guardar como Google Sheets"
+        echo "   • Actualizar GOOGLE_SHEET_ID_MOTICK con el nuevo ID"
