@@ -79,7 +79,7 @@ jobs:
         HEADLESS_MODE: true
         TEST_MODE: ${{ inputs.test_mode }}
       run: |
-        cd src
+        cd scr
         python scraper_motick.py
         
     - name: Run Motick Analysis
@@ -87,7 +87,7 @@ jobs:
         GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
         GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID_MOTICK }}
       run: |
-        cd src
+        cd scr
         python analisis_motick.py
         
     - name: Upload Artifacts (Backup)
