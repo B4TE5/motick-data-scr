@@ -333,69 +333,109 @@ def extract_likes_robust(driver):
     return 0
 
 def extract_year_and_km_robust(driver):
-    """Extrae año y KM usando SELECTORES EXITOSOS del scraper de COCHES"""
+    """Extrae año y KM de la DESCRIPCIÓN de Wallapop - CORREGIDO"""
     year = "No especificado"
     km = "No especificado"
     
     try:
-        # EXTRAER KILOMETROS CON SELECTOR ESPECÍFICO DE WALLAPOP (del scraper exitoso)
-        try:
-            km_section = driver.find_element(By.XPATH, "//span[text()='Kilómetros']/following-sibling::span")
-            km_text = km_section.text.strip()
-            if km_text and km_text.replace('.', '').replace(',', '').replace(' ', '').isdigit():
-                km_clean = km_text.replace('.', '').replace(',', '').replace(' ', '')
-                km_value = int(km_clean)
-                km = f"{km_value:,} km".replace(',', '.')
-        except:
-            # Fallback optimizado del scraper de coches exitoso
+        # EXTRAER DE LA DESCRIPCIÓN usando selector específico de Wallapop
+        description_selectors = [
+            "section.item-detail_ItemDetailTwoColumns__description__0DKb0",
+            ".item-detail_ItemDetailTwoColumns__description__0DKb0",
+            "[class*='description']",
+            "section[class*='description']"
+        ]
+        
+        description_text = ""
+        for selector in description_selectors:
+            try:
+                description_element = driver.find_element(By.CSS_SELECTOR, selector)
+                description_text = description_element.text
+                if description_text:
+                    break
+            except:
+                continue
+        
+        if description_text:
+            # EXTRAER KILÓMETROS de la descripción
+            km_patterns = [
+                r'-\s*Kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',      # "- Kilómetros: 4.500"
+                r'-\s*kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',      # "- kilómetros: 4.500"  
+                r'Kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',          # "Kilómetros: 4.500"
+                r'kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',          # "kilómetros: 4.500"
+                r'KM:\s*(\d{1,3}(?:\.\d{3})*)',                  # "KM: 4.500"
+                r'km:\s*(\d{1,3}(?:\.\d{3})*)',                  # "km: 4.500"
+                r'(\d{1,3}(?:\.\d{3})*)\s*km',                   # "4.500 km"
+                r'(\d{1,3}(?:\.\d{3})*)\s*kilómetros',           # "4.500 kilómetros"
+                r'(\d+)\s*mil\s*km',                             # "42 mil km"
+            ]
+            
+            for pattern in km_patterns:
+                match = re.search(pattern, description_text, re.IGNORECASE)
+                if match:
+                    try:
+                        km_text = match.group(1)
+                        
+                        # Manejar diferentes formatos
+                        if 'mil' in pattern.lower():
+                            # Formato "42 mil km"
+                            km_value = int(km_text) * 1000
+                        else:
+                            # Formato normal con puntos como separadores de miles
+                            km_value = int(km_text.replace('.', ''))
+                        
+                        # Validación para motos (rango amplio)
+                        if 1 <= km_value <= 999999:
+                            km = f"{km_value:,} km".replace(',', '.')
+                            break
+                            
+                    except:
+                        continue
+            
+            # EXTRAER AÑO de la descripción
+            year_patterns = [
+                r'-\s*Año:\s*(\d{4})',                          # "- Año: 2023"
+                r'-\s*año:\s*(\d{4})',                          # "- año: 2023"
+                r'Año:\s*(\d{4})',                              # "Año: 2023"
+                r'año:\s*(\d{4})',                              # "año: 2023"
+                r'modelo\s+(\d{4})',                            # "modelo 2023"
+                r'del\s+(\d{4})',                               # "del 2023"
+                r'(\d{4})\s*(?:cc|cilindros)',                  # "2023 cc"
+            ]
+            
+            for pattern in year_patterns:
+                match = re.search(pattern, description_text, re.IGNORECASE)
+                if match:
+                    try:
+                        year_value = int(match.group(1))
+                        if 1990 <= year_value <= 2025:
+                            year = str(year_value)
+                            break
+                    except:
+                        continue
+        
+        # Si no encuentra en descripción, buscar en HTML general (fallback)
+        if km == "No especificado":
             try:
                 html_content = driver.page_source
-                km_patterns = [
+                km_patterns_html = [
                     r'Kilómetros["\s:>]*</span><span[^>]*>(\d+(?:[\.\s]\d+)*)</span>',
                     r'kilómetros["\s:>]*</span><span[^>]*>(\d+(?:[\.\s]\d+)*)</span>',
                     r'>(\d{3,7})\s*km',
-                    r'(\d{3,7})\s*kilómetros'
                 ]
                 
-                for pattern in km_patterns:
+                for pattern in km_patterns_html:
                     matches = re.findall(pattern, html_content, re.IGNORECASE)
                     for match in matches:
                         try:
                             km_clean = match.replace('.', '').replace(',', '').replace(' ', '')
                             km_value = int(km_clean)
-                            if 100 <= km_value <= 999999:  # Rango ampliado como en scraper exitoso
+                            if 1 <= km_value <= 999999:
                                 km = f"{km_value:,} km".replace(',', '.')
                                 break
                         except:
                             continue
                     if km != "No especificado":
-                        break
-            except:
-                pass
-        
-        # EXTRAER AÑO CON SELECTOR ESPECÍFICO DE WALLAPOP (del scraper exitoso)
-        try:
-            year_section = driver.find_element(By.XPATH, "//span[text()='Año']/following-sibling::span")
-            year_text = year_section.text.strip()
-            if year_text.isdigit() and 1990 <= int(year_text) <= 2025:
-                year = year_text
-        except:
-            # Fallback del scraper exitoso
-            try:
-                html_content = driver.page_source
-                year_patterns = [
-                    r'Año["\s:>]*</span><span[^>]*>(\d{4})</span>',
-                    r'año["\s:>]*</span><span[^>]*>(\d{4})</span>'
-                ]
-                
-                for pattern in year_patterns:
-                    matches = re.findall(pattern, html_content, re.IGNORECASE)
-                    for match in matches:
-                        year_value = int(match)
-                        if 1990 <= year_value <= 2025:
-                            year = str(year_value)
-                            break
-                    if year != "No especificado":
                         break
             except:
                 pass
