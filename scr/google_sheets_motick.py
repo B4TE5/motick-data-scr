@@ -93,7 +93,8 @@ class GoogleSheetsMotick:
             df_motos['ID_Unico_Real'] = df_motos.apply(self.crear_id_unico_real, axis=1)
             
             # Nombre de hoja basado en fecha - MISMO PATRON QUE EL QUE FUNCIONA
-            sheet_name = f"Datos_{fecha_extraccion.replace('/', '_')}"
+            fecha_para_hoja = datetime.strptime(fecha_extraccion, "%d/%m/%Y").strftime("%d/%m/%y")
+            sheet_name = f"SCR {fecha_para_hoja}"
             
             print(f"SUBIENDO: Datos a hoja {sheet_name}")
             
