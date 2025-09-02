@@ -1,11 +1,10 @@
 """
-Google Sheets Handler CORREGIDO para Motick Scraper
-Version mejorada con diagnóstico y manejo robusto de errores
+Google Sheets Handler para Motick Scraper
+Maneja la subida y lectura de datos de motos desde/hacia Google Sheets
 """
 
 import gspread
 from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
 import pandas as pd
 import json
 import os
@@ -17,9 +16,15 @@ from datetime import datetime
 class GoogleSheetsMotick:
     def __init__(self, credentials_json_string=None, sheet_id=None, credentials_file=None):
         """
-        Inicializar handler con DIAGNÓSTICO AUTOMÁTICO
+        Inicializar handler con credenciales
+        
+        Args:
+            credentials_json_string: String JSON de credenciales (para GitHub Actions)
+            sheet_id: ID del Google Sheet
+            credentials_file: Ruta al archivo de credenciales (para testing local)
         """
         if credentials_json_string:
+            # Para GitHub Actions - desde string JSON
             credentials_dict = json.loads(credentials_json_string)
             self.credentials = Credentials.from_service_account_info(
                 credentials_dict,
@@ -28,8 +33,8 @@ class GoogleSheetsMotick:
                     'https://www.googleapis.com/auth/drive'
                 ]
             )
-            self.service_email = credentials_dict.get('client_email', 'NO_ENCONTRADO')
         elif credentials_file and os.path.exists(credentials_file):
+            # Para testing local - desde archivo
             self.credentials = Credentials.from_service_account_file(
                 credentials_file,
                 scopes=[
@@ -37,100 +42,29 @@ class GoogleSheetsMotick:
                     'https://www.googleapis.com/auth/drive'
                 ]
             )
-            # Leer email del archivo
-            with open(credentials_file, 'r') as f:
-                cred_data = json.load(f)
-                self.service_email = cred_data.get('client_email', 'NO_ENCONTRADO')
         else:
-            raise Exception("Se necesitan credenciales válidas (JSON string o archivo)")
+            raise Exception("Se necesitan credenciales validas (JSON string o archivo)")
         
         self.client = gspread.authorize(self.credentials)
-        self.drive_service = build('drive', 'v3', credentials=self.credentials)
         self.sheet_id = sheet_id
         
-        print(f"CONEXIÓN: Google Sheets inicializada")
-        print(f"SERVICE ACCOUNT: {self.service_email}")
-        print(f"SHEET ID: {self.sheet_id}")
+        print("CONEXION: Google Sheets establecida correctamente")
         
     def test_connection(self):
-        """
-        Prueba conexión con DIAGNÓSTICO DETALLADO
-        """
+        """Probar conexion a Google Sheets"""
         try:
-            print(f"\n[DIAGNÓSTICO] Probando conexión...")
-            
-            # Test 1: Verificar que el documento existe con Drive API
-            print(f"[TEST 1] Verificando documento en Drive...")
-            try:
-                file_info = self.drive_service.files().get(
-                    fileId=self.sheet_id,
-                    fields='id,name,mimeType,owners,shared'
-                ).execute()
-                
-                print(f"✅ Documento encontrado: {file_info['name']}")
-                print(f"📄 Tipo MIME: {file_info['mimeType']}")
-                
-                # Verificar que es Google Sheet nativo
-                if file_info['mimeType'] != 'application/vnd.google-apps.spreadsheet':
-                    print(f"❌ PROBLEMA: No es Google Sheet nativo")
-                    print(f"   Tipo actual: {file_info['mimeType']}")
-                    print(f"   Necesitas convertirlo a Google Sheet")
-                    return False
-                
-            except Exception as e:
-                print(f"❌ Error accediendo documento: {str(e)}")
-                print(f"💡 Posibles causas:")
-                print(f"   • Sheet ID incorrecto: {self.sheet_id}")
-                print(f"   • Documento no existe")
-                return False
-            
-            # Test 2: Verificar permisos con Sheets API
-            print(f"[TEST 2] Probando acceso con Sheets API...")
-            try:
-                spreadsheet = self.client.open_by_key(self.sheet_id)
-                print(f"✅ Conectado a: {spreadsheet.title}")
-                
-                # Listar hojas disponibles
-                worksheets = spreadsheet.worksheets()
-                worksheet_names = [ws.title for ws in worksheets]
-                print(f"📊 Hojas encontradas: {worksheet_names}")
-                
-                return True
-                
-            except gspread.exceptions.APIError as api_error:
-                error_details = str(api_error)
-                print(f"❌ ERROR DE API: {error_details}")
-                
-                if "This operation is not supported" in error_details:
-                    print(f"🔧 DIAGNÓSTICO: Documento no es Google Sheet nativo")
-                    print(f"📋 SOLUCIÓN: Abre en Google Drive → Clic derecho → Abrir con Google Sheets → Guardar como Google Sheets")
-                elif "does not have permission" in error_details or "PERMISSION_DENIED" in error_details:
-                    print(f"🔧 DIAGNÓSTICO: Problemas de permisos")
-                    print(f"📋 SOLUCIÓN CRÍTICA:")
-                    print(f"   1. Abre el Google Sheet: https://docs.google.com/spreadsheets/d/{self.sheet_id}")
-                    print(f"   2. Clic en 'Compartir' (botón azul)")
-                    print(f"   3. Agregar email: {self.service_email}")
-                    print(f"   4. Dar permisos: Editor")
-                    print(f"   5. Clic en 'Enviar'")
-                elif "insufficientPermissions" in error_details:
-                    print(f"🔧 DIAGNÓSTICO: Scopes insuficientes")
-                    print(f"📋 VERIFICAR: APIs habilitadas en Google Cloud Console")
-                else:
-                    print(f"🔧 DIAGNÓSTICO: Error API desconocido")
-                
-                return False
-                
-            except Exception as e:
-                print(f"❌ ERROR GENERAL: {str(e)}")
-                return False
-        
+            spreadsheet = self.client.open_by_key(self.sheet_id)
+            print(f"CONEXION: Exitosa al Sheet: {spreadsheet.title}")
+            print(f"URL: https://docs.google.com/spreadsheets/d/{self.sheet_id}")
+            return True
         except Exception as e:
-            print(f"❌ ERROR CRÍTICO: {str(e)}")
+            print(f"ERROR CONEXION: {str(e)}")
             return False
     
     def crear_id_unico_real(self, fila):
         """
-        Crea ID único basado en: URL + cuenta + título + precio + km
+        Crea ID unico basado en: URL + cuenta + titulo + precio + km
+        MISMA LOGICA QUE EL SISTEMA DE COCHES
         """
         try:
             url = str(fila.get('URL', '')).strip()
@@ -139,12 +73,12 @@ class GoogleSheetsMotick:
             precio = str(fila.get('Precio', '')).strip()
             km = str(fila.get('Kilometraje', '')).strip()
             
-            # Normalizar título (quitar caracteres especiales)
+            # Normalizar titulo (quitar caracteres especiales)
             titulo_limpio = re.sub(r'[^\w\s]', '', titulo.lower())[:30]
             km_limpio = re.sub(r'[^\d]', '', km)
             precio_limpio = re.sub(r'[^\d]', '', precio)
             
-            # Crear clave única
+            # Crear clave unica
             clave_unica = f"{url}_{cuenta}_{titulo_limpio}_{precio_limpio}_{km_limpio}"
             
             # Hash para ID manejable
@@ -157,99 +91,83 @@ class GoogleSheetsMotick:
     
     def subir_datos_scraper(self, df_motos, fecha_extraccion=None):
         """
-        Sube datos del scraper con REINTENTOS y MEJOR MANEJO DE ERRORES
+        Sube los datos del scraper diario a Google Sheets
+        
+        Args:
+            df_motos: DataFrame con datos de motos extraidas
+            fecha_extraccion: Fecha de extraccion (formato DD/MM/YYYY)
         """
-        max_reintentos = 3
-        
-        for intento in range(max_reintentos):
+        try:
+            if fecha_extraccion is None:
+                fecha_extraccion = datetime.now().strftime("%d/%m/%Y")
+            
+            # Crear ID_Unico_Real para cada moto
+            df_motos['ID_Unico_Real'] = df_motos.apply(self.crear_id_unico_real, axis=1)
+            
+            # Nombre de hoja basado en fecha
+            sheet_name = f"Datos_{fecha_extraccion.replace('/', '_')}"
+            
+            print(f"\nSUBIENDO: Datos del scraper a hoja {sheet_name}")
+            
+            spreadsheet = self.client.open_by_key(self.sheet_id)
+            
+            # Verificar si ya existe una hoja con este nombre
             try:
-                if fecha_extraccion is None:
-                    fecha_extraccion = datetime.now().strftime("%d/%m/%Y")
-                
-                # Crear ID_Unico_Real para cada moto
-                df_motos['ID_Unico_Real'] = df_motos.apply(self.crear_id_unico_real, axis=1)
-                
-                # Nombre de hoja basado en fecha
-                sheet_name = f"Datos_{fecha_extraccion.replace('/', '_')}"
-                
-                print(f"\n[INTENTO {intento + 1}] Subiendo datos a hoja {sheet_name}")
-                
-                spreadsheet = self.client.open_by_key(self.sheet_id)
-                
-                # Verificar si ya existe una hoja con este nombre
-                try:
-                    existing_sheet = spreadsheet.worksheet(sheet_name)
-                    print(f"AVISO: Hoja {sheet_name} existe - limpiando datos")
-                    existing_sheet.clear()
-                    worksheet = existing_sheet
-                except gspread.WorksheetNotFound:
-                    # Crear nueva hoja
-                    worksheet = spreadsheet.add_worksheet(
-                        title=sheet_name,
-                        rows=len(df_motos) + 20,
-                        cols=len(df_motos.columns) + 5
-                    )
-                    print(f"CREANDO: Nueva hoja {sheet_name}")
-                
-                # Preparar datos para subir
-                headers = df_motos.columns.values.tolist()
-                data_rows = df_motos.values.tolist()
-                all_data = [headers] + data_rows
-                
-                # Subir datos con batch update (más eficiente)
-                worksheet.update(all_data)
-                
-                print(f"EXITO: {len(df_motos)} motos subidas a {sheet_name}")
-                print(f"URL: https://docs.google.com/spreadsheets/d/{self.sheet_id}")
-                
-                return True, sheet_name
-                
-            except gspread.exceptions.APIError as api_error:
-                print(f"ERROR API (intento {intento + 1}): {str(api_error)}")
-                
-                if "This operation is not supported" in str(api_error):
-                    print(f"❌ CRÍTICO: Google Sheet no es nativo - necesita conversión")
-                    return False, None
-                elif "does not have permission" in str(api_error):
-                    print(f"❌ CRÍTICO: Sin permisos - compartir sheet con {self.service_email}")
-                    return False, None
-                elif intento == max_reintentos - 1:
-                    print(f"❌ FALLO FINAL después de {max_reintentos} intentos")
-                    return False, None
-                else:
-                    print(f"⏳ Esperando antes del siguiente intento...")
-                    time.sleep(2 ** intento)  # Backoff exponencial
-                    
-            except Exception as e:
-                print(f"ERROR GENERAL (intento {intento + 1}): {str(e)}")
-                if intento == max_reintentos - 1:
-                    return False, None
-                time.sleep(2)
-        
-        return False, None
+                existing_sheet = spreadsheet.worksheet(sheet_name)
+                print(f"AVISO: Ya existe hoja {sheet_name} - sobrescribiendo")
+                existing_sheet.clear()
+                worksheet = existing_sheet
+            except gspread.WorksheetNotFound:
+                # Crear nueva hoja
+                worksheet = spreadsheet.add_worksheet(
+                    title=sheet_name,
+                    rows=len(df_motos) + 10,
+                    cols=len(df_motos.columns) + 2
+                )
+                print(f"CREANDO: Nueva hoja {sheet_name}")
+            
+            # Preparar datos para subir
+            headers = df_motos.columns.values.tolist()
+            data_rows = df_motos.values.tolist()
+            all_data = [headers] + data_rows
+            
+            # Subir datos
+            worksheet.update(all_data)
+            
+            print(f"EXITO: {len(df_motos)} motos subidas a {sheet_name}")
+            print(f"URL: https://docs.google.com/spreadsheets/d/{self.sheet_id}")
+            
+            return True, sheet_name
+            
+        except Exception as e:
+            print(f"ERROR SUBIDA SCRAPER: {str(e)}")
+            return False, None
     
     def leer_datos_historico(self, sheet_name="Data_Historico"):
         """
-        Lee datos del histórico con MEJOR MANEJO DE ERRORES
+        Lee los datos del historico desde Google Sheets
+        CORREGIDO: Lee desde "Data_Historico" como especifica el usuario
+        
+        Args:
+            sheet_name: Nombre de la hoja del historico
+            
+        Returns:
+            DataFrame con datos historicos o None si no existe
         """
         try:
-            print(f"[LECTURA] Accediendo a hoja {sheet_name}...")
-            
             spreadsheet = self.client.open_by_key(self.sheet_id)
             
             try:
                 worksheet = spreadsheet.worksheet(sheet_name)
+                data = worksheet.get_all_values()
                 
-                # Obtener todos los valores
-                all_values = worksheet.get_all_values()
-                
-                if not all_values:
-                    print(f"AVISO: Hoja {sheet_name} está vacía")
+                if not data:
+                    print(f"AVISO: Hoja {sheet_name} esta vacia")
                     return None
                 
                 # Convertir a DataFrame
-                headers = all_values[0]
-                rows = all_values[1:]
+                headers = data[0]
+                rows = data[1:]
                 
                 if not rows:
                     print(f"AVISO: Hoja {sheet_name} solo tiene headers")
@@ -257,7 +175,7 @@ class GoogleSheetsMotick:
                 
                 df = pd.DataFrame(rows, columns=headers)
                 
-                # Limpiar columnas numéricas
+                # Limpiar columnas numericas
                 columnas_visitas = [col for col in df.columns if col.startswith('Visitas_')]
                 columnas_likes = [col for col in df.columns if col.startswith('Likes_')]
                 
@@ -265,27 +183,27 @@ class GoogleSheetsMotick:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
                 
-                print(f"LEÍDO: {len(df)} motos del histórico desde {sheet_name}")
-                print(f"COLUMNAS: {len(df.columns)} total")
+                print(f"LEIDO: {len(df)} motos del historico desde {sheet_name}")
                 return df
                 
             except gspread.WorksheetNotFound:
-                print(f"AVISO: Hoja {sheet_name} no existe - será creada en primera ejecución")
+                print(f"AVISO: Hoja {sheet_name} no existe - sera creada en primera ejecucion")
                 return None
                 
         except Exception as e:
-            print(f"ERROR LECTURA HISTÓRICO: {str(e)}")
+            print(f"ERROR LECTURA HISTORICO: {str(e)}")
             return None
     
     def leer_datos_scraper_reciente(self):
         """
-        Lee datos más recientes del scraper con MEJOR DETECCIÓN
+        Lee los datos mas recientes del scraper desde Google Sheets
+        
+        Returns:
+            DataFrame con datos del scraper mas reciente, fecha de extraccion
         """
         try:
             spreadsheet = self.client.open_by_key(self.sheet_id)
             hojas_disponibles = [worksheet.title for worksheet in spreadsheet.worksheets()]
-            
-            print(f"HOJAS DISPONIBLES: {hojas_disponibles}")
             
             # Buscar hojas de datos (formato: Datos_DD_MM_YYYY)
             hojas_datos = []
@@ -302,18 +220,18 @@ class GoogleSheetsMotick:
                 print("ERROR: No se encontraron hojas de datos del scraper")
                 return None, None
             
-            # Ordenar por fecha (más reciente primero)
+            # Ordenar por fecha (mas reciente primero)
             hojas_datos.sort(key=lambda x: x[1], reverse=True)
             hoja_mas_reciente, fecha_obj, fecha_str = hojas_datos[0]
             
-            print(f"LEYENDO: Datos más recientes desde {hoja_mas_reciente} ({fecha_str})")
+            print(f"LEYENDO: Datos mas recientes desde {hoja_mas_reciente} ({fecha_str})")
             
-            # Leer la hoja más reciente
+            # Leer la hoja mas reciente
             worksheet = spreadsheet.worksheet(hoja_mas_reciente)
             data = worksheet.get_all_values()
             
             if not data:
-                print(f"ERROR: Hoja {hoja_mas_reciente} está vacía")
+                print(f"ERROR: Hoja {hoja_mas_reciente} esta vacia")
                 return None, None
             
             # Convertir a DataFrame
@@ -326,27 +244,72 @@ class GoogleSheetsMotick:
             
             df = pd.DataFrame(rows, columns=headers)
             
-            # Limpiar columnas numéricas
+            # Limpiar columnas numericas
             df['Visitas'] = pd.to_numeric(df['Visitas'], errors='coerce').fillna(0).astype(int)
             df['Likes'] = pd.to_numeric(df['Likes'], errors='coerce').fillna(0).astype(int)
             
-            print(f"LEÍDO: {len(df)} motos desde {hoja_mas_reciente}")
+            print(f"LEIDO: {len(df)} motos desde {hoja_mas_reciente}")
             return df, fecha_str
             
         except Exception as e:
             print(f"ERROR LECTURA SCRAPER: {str(e)}")
             return None, None
     
-    def guardar_historico_con_hojas_originales(self, df_historico, fecha_procesamiento):
+    def guardar_historico_completo(self, df_historico, fecha_procesamiento, sheet_name="Historico_Motick"):
         """
-        Guarda el histórico en "Data_Historico" como especifica el usuario
+        Guarda el historico completo actualizado a Google Sheets
+        
+        Args:
+            df_historico: DataFrame con historico actualizado
+            fecha_procesamiento: Fecha del procesamiento
+            sheet_name: Nombre de la hoja del historico
         """
         try:
-            print(f"[GUARDANDO] Histórico en Data_Historico...")
-            
             spreadsheet = self.client.open_by_key(self.sheet_id)
             
-            # HOJA PRINCIPAL: Data_Historico
+            # Crear o actualizar hoja principal del historico
+            try:
+                worksheet = spreadsheet.worksheet(sheet_name)
+                worksheet.clear()
+                print(f"LIMPIANDO: Hoja existente {sheet_name}")
+            except gspread.WorksheetNotFound:
+                worksheet = spreadsheet.add_worksheet(
+                    title=sheet_name,
+                    rows=len(df_historico) + 20,
+                    cols=len(df_historico.columns) + 5
+                )
+                print(f"CREANDO: Nueva hoja {sheet_name}")
+            
+            # Preparar datos para subir
+            headers = df_historico.columns.values.tolist()
+            data_rows = df_historico.values.tolist()
+            all_data = [headers] + data_rows
+            
+            # Subir datos
+            worksheet.update(all_data)
+            
+            # Crear hojas adicionales
+            self.crear_hojas_resumen(spreadsheet, df_historico, fecha_procesamiento)
+            
+            print(f"EXITO: Historico actualizado en {sheet_name}")
+            print(f"MOTOS: {len(df_historico)} total")
+            print(f"URL: https://docs.google.com/spreadsheets/d/{self.sheet_id}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"ERROR GUARDANDO HISTORICO: {str(e)}")
+            return False
+    
+    def guardar_historico_con_hojas_originales(self, df_historico, fecha_procesamiento):
+        """
+        Guarda el historico en "Data_Historico" como especifica el usuario
+        Mantiene la misma lógica que el script local pero en Google Sheets
+        """
+        try:
+            spreadsheet = self.client.open_by_key(self.sheet_id)
+            
+            # HOJA PRINCIPAL: Data_Historico (como especifica el usuario)
             try:
                 worksheet_main = spreadsheet.worksheet("Data_Historico")
                 worksheet_main.clear()
@@ -354,75 +317,165 @@ class GoogleSheetsMotick:
             except gspread.WorksheetNotFound:
                 worksheet_main = spreadsheet.add_worksheet(
                     title="Data_Historico",
-                    rows=len(df_historico) + 50,
-                    cols=len(df_historico.columns) + 20
+                    rows=len(df_historico) + 20,
+                    cols=len(df_historico.columns) + 10
                 )
                 print(f"CREANDO: Nueva hoja Data_Historico")
             
-            # Subir datos principales
+            # Subir datos principales a Data_Historico
             headers = df_historico.columns.values.tolist()
             data_rows = df_historico.values.tolist()
             all_data = [headers] + data_rows
-            
-            # Usar batch update para mayor eficiencia
             worksheet_main.update(all_data)
             
-            print(f"EXITO: Histórico actualizado en Data_Historico")
-            print(f"COLUMNAS: {len(df_historico.columns)} columnas")
+            print(f"EXITO: Historico actualizado en Data_Historico")
+            print(f"COLUMNAS: {len(df_historico.columns)} columnas (incluyendo Visitas/Likes por fechas)")
             print(f"MOTOS: {len(df_historico)} total")
             print(f"URL: https://docs.google.com/spreadsheets/d/{self.sheet_id}")
             
             return True
             
         except Exception as e:
-            print(f"ERROR GUARDANDO HISTÓRICO: {str(e)}")
+            print(f"ERROR GUARDANDO EN DATA_HISTORICO: {str(e)}")
             return False
+    
+    def crear_hojas_resumen(self, spreadsheet, df_historico, fecha_procesamiento):
+        """Crea hojas de resumen y estadisticas"""
+        try:
+            # HOJA: Resumen por cuenta
+            try:
+                columnas_visitas = [col for col in df_historico.columns if col.startswith('Visitas_')]
+                columnas_likes = [col for col in df_historico.columns if col.startswith('Likes_')]
+                
+                if columnas_likes and columnas_visitas:
+                    col_likes_reciente = columnas_likes[-1]
+                    col_visitas_reciente = columnas_visitas[-1]
+                    
+                    # Asegurar que las columnas sean numericas
+                    df_historico[col_likes_reciente] = pd.to_numeric(df_historico[col_likes_reciente], errors='coerce').fillna(0)
+                    df_historico[col_visitas_reciente] = pd.to_numeric(df_historico[col_visitas_reciente], errors='coerce').fillna(0)
+                    
+                    resumen_cuenta = df_historico.groupby('Cuenta').agg({
+                        'ID_Unico_Real': 'count',
+                        col_visitas_reciente: ['sum', 'mean', 'max'],
+                        col_likes_reciente: ['sum', 'mean', 'max']
+                    }).round(2)
+                    
+                    resumen_cuenta.columns = [
+                        'Total_Motos', 'Total_Visitas', 'Media_Visitas', 'Max_Visitas',
+                        'Total_Likes', 'Media_Likes', 'Max_Likes'
+                    ]
+                    
+                    # Subir resumen por cuenta
+                    try:
+                        ws_resumen = spreadsheet.worksheet("Resumen_Por_Cuenta")
+                        ws_resumen.clear()
+                    except gspread.WorksheetNotFound:
+                        ws_resumen = spreadsheet.add_worksheet("Resumen_Por_Cuenta", rows=20, cols=10)
+                    
+                    # Convertir a lista para subir
+                    resumen_data = [resumen_cuenta.columns.tolist()] + resumen_cuenta.values.tolist()
+                    ws_resumen.update(resumen_data)
+                    
+                    print("CREADO: Resumen por cuenta")
+            
+            except Exception as e:
+                print(f"ADVERTENCIA: Error creando resumen por cuenta: {str(e)}")
+            
+            # HOJA: Top motos (solo activas)
+            try:
+                motos_activas = df_historico[df_historico['Estado'] == 'activa'].copy()
+                
+                if not motos_activas.empty and columnas_likes:
+                    col_likes_reciente = columnas_likes[-1]
+                    motos_activas[col_likes_reciente] = pd.to_numeric(
+                        motos_activas[col_likes_reciente], errors='coerce'
+                    ).fillna(0)
+                    
+                    top_motos = motos_activas.nlargest(50, col_likes_reciente)
+                    
+                    try:
+                        ws_top = spreadsheet.worksheet("Top_50_Likes")
+                        ws_top.clear()
+                    except gspread.WorksheetNotFound:
+                        ws_top = spreadsheet.add_worksheet("Top_50_Likes", rows=60, cols=len(top_motos.columns))
+                    
+                    # Subir top motos
+                    headers = top_motos.columns.values.tolist()
+                    data_rows = top_motos.values.tolist()
+                    top_data = [headers] + data_rows
+                    ws_top.update(top_data)
+                    
+                    print("CREADO: Top 50 motos por likes")
+            
+            except Exception as e:
+                print(f"ADVERTENCIA: Error creando top motos: {str(e)}")
+            
+            # HOJA: Motos vendidas
+            try:
+                motos_vendidas = df_historico[df_historico['Estado'] == 'vendida'].copy()
+                
+                if not motos_vendidas.empty:
+                    motos_vendidas = motos_vendidas.sort_values('Fecha_Venta', ascending=False)
+                    
+                    try:
+                        ws_vendidas = spreadsheet.worksheet("Motos_Vendidas")
+                        ws_vendidas.clear()
+                    except gspread.WorksheetNotFound:
+                        ws_vendidas = spreadsheet.add_worksheet("Motos_Vendidas", rows=len(motos_vendidas)+10, cols=len(motos_vendidas.columns))
+                    
+                    # Subir motos vendidas
+                    headers = motos_vendidas.columns.values.tolist()
+                    data_rows = motos_vendidas.values.tolist()
+                    vendidas_data = [headers] + data_rows
+                    ws_vendidas.update(vendidas_data)
+                    
+                    print("CREADO: Historial de motos vendidas")
+            
+            except Exception as e:
+                print(f"ADVERTENCIA: Error creando motos vendidas: {str(e)}")
+                
+        except Exception as e:
+            print(f"ADVERTENCIA: Error general creando hojas resumen: {str(e)}")
 
 def test_google_sheets_motick():
-    """Función de prueba MEJORADA con diagnóstico completo"""
-    print("="*60)
-    print("TEST GOOGLE SHEETS MOTICK - DIAGNÓSTICO COMPLETO")
-    print("="*60)
+    """Funcion de prueba para verificar conexion MOTICK"""
+    print("PROBANDO CONEXION A GOOGLE SHEETS MOTICK")
+    print("=" * 50)
     
     from dotenv import load_dotenv
     load_dotenv()
     
     sheet_id = os.getenv('GOOGLE_SHEET_ID_MOTICK')
-    credentials_json = os.getenv('GOOGLE_CREDENTIALS_JSON')
-    
-    print(f"SHEET_ID: {sheet_id}")
-    print(f"CREDENCIALES: {'✅ Encontradas' if credentials_json else '❌ No encontradas'}")
+    print(f"SHEET_ID desde .env: {sheet_id}")
     
     if not sheet_id:
-        print("❌ ERROR: GOOGLE_SHEET_ID_MOTICK no configurado")
-        return False
+        sheet_id = input("Introduce el Sheet ID de MOTICK manualmente: ")
     
     try:
-        if credentials_json:
-            # Para GitHub Actions
-            gs_handler = GoogleSheetsMotick(
-                credentials_json_string=credentials_json,
-                sheet_id=sheet_id
-            )
+        # Intentar cargar credenciales locales
+        credentials_file = "../credentials/service-account.json"
+        if not os.path.exists(credentials_file):
+            print(f"ERROR: No se encontro el archivo de credenciales: {credentials_file}")
+            return False
+        
+        # Crear handler
+        gs_handler = GoogleSheetsMotick(
+            credentials_file=credentials_file,
+            sheet_id=sheet_id
+        )
+        
+        # Probar conexion
+        if gs_handler.test_connection():
+            print("\nCONEXION EXITOSA A MOTICK SHEETS")
+            return True
         else:
-            # Para testing local
-            credentials_file = "../credentials/service-account.json"
-            if not os.path.exists(credentials_file):
-                print(f"❌ ERROR: No se encontró {credentials_file}")
-                return False
+            return False
             
-            gs_handler = GoogleSheetsMotick(
-                credentials_file=credentials_file,
-                sheet_id=sheet_id
-            )
-        
-        # Ejecutar test de conexión con diagnóstico completo
-        return gs_handler.test_connection()
-        
     except Exception as e:
-        print(f"❌ ERROR EN TEST: {str(e)}")
+        print(f"ERROR EN PRUEBA: {str(e)}")
         return False
 
 if __name__ == "__main__":
-    # Ejecutar test si se ejecuta directamente
+    # Ejecutar prueba si se ejecuta directamente
     test_google_sheets_motick()
