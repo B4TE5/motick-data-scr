@@ -1,6 +1,6 @@
 """
-Google Sheets Handler para Motick Scraper - CORREGIDO
-Basado en el codigo que SI FUNCIONA del uploader
+Google Sheets Handler para Motick Scraper - ARREGLO DEFINITIVO
+Corrige el problema de formato de hojas SCR vs Datos
 """
 
 import gspread
@@ -178,7 +178,7 @@ class GoogleSheetsMotick:
     
     def leer_datos_scraper_reciente(self):
         """
-        Lee los datos mas recientes del scraper
+        ARREGLO DEFINITIVO: Lee datos de hojas con formato SCR DD/MM/YY
         """
         try:
             spreadsheet = self.client.open_by_key(self.sheet_id)
@@ -186,19 +186,38 @@ class GoogleSheetsMotick:
             
             print(f"DEBUG: Hojas disponibles: {hojas_disponibles}")
             
-            # Buscar hojas de datos (formato: Datos_DD_MM_YYYY)
+            # ARREGLO CRITICO: Buscar hojas con formato SCR DD/MM/YY
             hojas_datos = []
             for hoja in hojas_disponibles:
-                if hoja.startswith('Datos_') and len(hoja.split('_')) == 4:
+                # Verificar que empiece con "SCR " y tenga el formato correcto
+                if hoja.startswith('SCR ') and len(hoja) == 10:  # "SCR 03/09/25" = 10 caracteres
                     try:
-                        fecha_str = hoja.replace('Datos_', '').replace('_', '/')
-                        fecha_obj = datetime.strptime(fecha_str, "%d/%m/%Y")
-                        hojas_datos.append((hoja, fecha_obj, fecha_str))
-                    except:
+                        # Extraer fecha desde "SCR 03/09/25"
+                        fecha_parte = hoja[4:]  # Quitar "SCR "
+                        
+                        # Verificar formato DD/MM/YY
+                        if len(fecha_parte) == 8 and fecha_parte[2] == '/' and fecha_parte[5] == '/':
+                            # Convertir YY a YYYY
+                            dia, mes, ano_corto = fecha_parte.split('/')
+                            
+                            # Asumir años 00-50 son 2000-2050, años 51-99 son 1951-1999
+                            if int(ano_corto) <= 50:
+                                ano_completo = f"20{ano_corto}"
+                            else:
+                                ano_completo = f"19{ano_corto}"
+                            
+                            fecha_completa = f"{dia}/{mes}/{ano_completo}"
+                            fecha_obj = datetime.strptime(fecha_completa, "%d/%m/%Y")
+                            hojas_datos.append((hoja, fecha_obj, fecha_completa))
+                            print(f"DEBUG: Hoja SCR detectada: {hoja} -> {fecha_completa}")
+                        
+                    except Exception as e:
+                        print(f"DEBUG: Error procesando hoja {hoja}: {str(e)}")
                         continue
             
             if not hojas_datos:
                 print("ERROR: No se encontraron hojas de datos del scraper")
+                print(f"DEBUG: Se buscaron hojas que empiecen con 'SCR ' en: {hojas_disponibles}")
                 return None, None
             
             # Ordenar por fecha (mas reciente primero)
@@ -233,16 +252,23 @@ class GoogleSheetsMotick:
             
         except Exception as e:
             print(f"ERROR LECTURA SCRAPER: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return None, None
     
     def guardar_historico_con_hojas_originales(self, df_historico, fecha_procesamiento):
         """
-        Guarda el historico en Data_Historico - SIMPLIFICADO
+        VERSIÓN COMPLETA: Guarda en 3 hojas como requiere el usuario
+        1. Data_Historico (todas las motos ordenadas)
+        2. Motos_Activas (solo activas por Likes_Totales DESC)
+        3. Motos_Vendidas (solo vendidas por Fecha_Venta DESC)
         """
         try:
             spreadsheet = self.client.open_by_key(self.sheet_id)
             
-            # HOJA PRINCIPAL: Data_Historico
+            # ===============================================
+            # 1. HOJA PRINCIPAL: Data_Historico
+            # ===============================================
             try:
                 worksheet_main = spreadsheet.worksheet("Data_Historico")
                 worksheet_main.clear()
@@ -255,21 +281,119 @@ class GoogleSheetsMotick:
                 )
                 print(f"CREANDO: Nueva hoja Data_Historico")
             
-            # Subir datos principales - IGUAL AL QUE FUNCIONA
-            headers = df_historico.columns.values.tolist()
-            data_rows = df_historico.values.tolist()
+            # Ordenar historico completo: Activas por Likes_Totales, Vendidas por Fecha_Venta
+            df_ordenado = self.ordenar_historico_completo(df_historico)
+            
+            # Subir datos principales
+            headers = df_ordenado.columns.values.tolist()
+            data_rows = df_ordenado.values.tolist()
             all_data = [headers] + data_rows
             worksheet_main.update(all_data)
             
-            print(f"EXITO: Historico actualizado en Data_Historico")
-            print(f"DATOS: {len(df_historico)} filas x {len(df_historico.columns)} columnas")
+            print(f"EXITO: Data_Historico actualizada con {len(df_ordenado)} motos")
+            
+            # ===============================================
+            # 2. HOJA MOTOS_ACTIVAS (solo activas por Likes_Totales DESC)
+            # ===============================================
+            motos_activas = df_historico[df_historico['Estado'] == 'activa'].copy()
+            
+            if not motos_activas.empty:
+                # Ordenar por Likes_Totales descendente
+                if 'Likes_Totales' in motos_activas.columns:
+                    motos_activas = motos_activas.sort_values('Likes_Totales', ascending=False, na_position='last')
+                
+                try:
+                    ws_activas = spreadsheet.worksheet("Motos_Activas")
+                    ws_activas.clear()
+                    print(f"LIMPIANDO: Hoja Motos_Activas existente")
+                except gspread.WorksheetNotFound:
+                    ws_activas = spreadsheet.add_worksheet(
+                        "Motos_Activas", 
+                        rows=len(motos_activas)+20, 
+                        cols=len(motos_activas.columns)+5
+                    )
+                    print(f"CREANDO: Nueva hoja Motos_Activas")
+                
+                # Subir motos activas
+                headers_activas = motos_activas.columns.values.tolist()
+                data_activas = motos_activas.values.tolist()
+                activas_data = [headers_activas] + data_activas
+                ws_activas.update(activas_data)
+                
+                print(f"EXITO: Motos_Activas actualizada con {len(motos_activas)} motos")
+            else:
+                print("AVISO: No hay motos activas")
+            
+            # ===============================================
+            # 3. HOJA MOTOS_VENDIDAS (solo vendidas por Fecha_Venta DESC)
+            # ===============================================
+            motos_vendidas = df_historico[df_historico['Estado'] == 'vendida'].copy()
+            
+            if not motos_vendidas.empty:
+                # Ordenar por Fecha_Venta descendente
+                if 'Fecha_Venta' in motos_vendidas.columns:
+                    motos_vendidas = motos_vendidas.sort_values('Fecha_Venta', ascending=False, na_position='last')
+                
+                try:
+                    ws_vendidas = spreadsheet.worksheet("Motos_Vendidas")
+                    ws_vendidas.clear()
+                    print(f"LIMPIANDO: Hoja Motos_Vendidas existente")
+                except gspread.WorksheetNotFound:
+                    ws_vendidas = spreadsheet.add_worksheet(
+                        "Motos_Vendidas", 
+                        rows=len(motos_vendidas)+20, 
+                        cols=len(motos_vendidas.columns)+5
+                    )
+                    print(f"CREANDO: Nueva hoja Motos_Vendidas")
+                
+                # Subir motos vendidas
+                headers_vendidas = motos_vendidas.columns.values.tolist()
+                data_vendidas = motos_vendidas.values.tolist()
+                vendidas_data = [headers_vendidas] + data_vendidas
+                ws_vendidas.update(vendidas_data)
+                
+                print(f"EXITO: Motos_Vendidas actualizada con {len(motos_vendidas)} motos")
+            else:
+                print("AVISO: No hay motos vendidas")
+            
+            print(f"DATOS FINALES: {len(df_historico)} filas x {len(df_historico.columns)} columnas")
             print(f"URL: https://docs.google.com/spreadsheets/d/{self.sheet_id}")
             
             return True
             
         except Exception as e:
-            print(f"ERROR GUARDANDO HISTORICO: {str(e)}")
+            print(f"ERROR GUARDANDO HISTORICO COMPLETO: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
+    
+    def ordenar_historico_completo(self, df_historico):
+        """
+        Ordena el historico: activas por Likes_Totales DESC, vendidas por Fecha_Venta DESC
+        """
+        try:
+            # Separar activas y vendidas
+            df_activas = df_historico[df_historico['Estado'] == 'activa'].copy()
+            df_vendidas = df_historico[df_historico['Estado'] == 'vendida'].copy()
+            
+            # Ordenar activas por Likes_Totales descendente (NO por visitas)
+            if not df_activas.empty and 'Likes_Totales' in df_activas.columns:
+                df_activas = df_activas.sort_values('Likes_Totales', ascending=False, na_position='last')
+                print(f"ORDENACION: {len(df_activas)} activas ordenadas por Likes_Totales DESC")
+            
+            # Ordenar vendidas por Fecha_Venta descendente
+            if not df_vendidas.empty and 'Fecha_Venta' in df_vendidas.columns:
+                df_vendidas = df_vendidas.sort_values('Fecha_Venta', ascending=False, na_position='last')
+                print(f"ORDENACION: {len(df_vendidas)} vendidas ordenadas por Fecha_Venta DESC")
+            
+            # Concatenar: activas arriba, vendidas abajo
+            df_ordenado = pd.concat([df_activas, df_vendidas], ignore_index=True)
+            
+            return df_ordenado
+            
+        except Exception as e:
+            print(f"ERROR ORDENANDO: {str(e)}")
+            return df_historico
 
 def test_google_sheets_motick():
     """Funcion de prueba IGUAL A LA QUE FUNCIONA"""
@@ -302,24 +426,14 @@ def test_google_sheets_motick():
         if gs_handler.test_connection():
             print("\nCONEXION EXITOSA A MOTICK SHEETS")
             
-            # Crear datos de prueba IGUAL AL QUE FUNCIONA
-            test_data = {
-                "ID_Moto": ["test1", "test2", "test3"],
-                "Cuenta": ["MOTICK.TEST", "MOTICK.TEST", "MOTICK.TEST"],
-                "Titulo": ["Test Moto 1", "Test Moto 2", "Test Moto 3"],
-                "Precio": ["5000 EUR", "6000 EUR", "7000 EUR"],
-                "Fecha_Extraccion": [datetime.now().strftime("%d/%m/%Y")] * 3
-            }
-            
-            df_test = pd.DataFrame(test_data)
-            print(f"SUBIENDO: Datos de prueba...")
-            
-            if gs_handler.subir_datos_scraper(df_test):
-                print("EXITO: Datos de prueba subidos correctamente")
-                print(f"REVISAR: https://docs.google.com/spreadsheets/d/{sheet_id}")
+            # Probar lectura de datos scraper recientes
+            print("\nPROBANDO LECTURA DE DATOS SCRAPER...")
+            df_reciente, fecha = gs_handler.leer_datos_scraper_reciente()
+            if df_reciente is not None:
+                print(f"EXITO: Leidos {len(df_reciente)} registros del {fecha}")
                 return True
             else:
-                print("ERROR: Subiendo datos de prueba")
+                print("ERROR: No se pudieron leer datos del scraper")
                 return False
         else:
             return False
@@ -329,5 +443,4 @@ def test_google_sheets_motick():
         return False
 
 if __name__ == "__main__":
-    # Ejecutar prueba si se ejecuta directamente
     test_google_sheets_motick()
