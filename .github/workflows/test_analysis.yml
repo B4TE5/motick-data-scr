@@ -1,13 +1,12 @@
 name: Test Motick Analysis Only
 
 on:
-  # Solo ejecución manual
   workflow_dispatch:
 
 jobs:
   test-analysis:
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # Suficiente tiempo para el análisis
+    timeout-minutes: 15
     
     steps:
     - name: Checkout Repository
@@ -27,34 +26,6 @@ jobs:
       env:
         GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
         GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID_MOTICK }}
-        HEADLESS_MODE: true
       run: |
-        echo "======================================"
-        echo "TESTING MOTICK ANALYSIS ONLY"
-        echo "======================================"
-        echo "Objetivo: Leer SCR 03/09/25 y actualizar histórico"
-        echo "Esperado: Añadir Visitas_03/09/2025 y Likes_03/09/2025"
-        echo ""
-        cd src
+        cd scr  # Nota: es 'scr' no 'src'
         python analisis_motick.py
-        
-    - name: Upload Test Results
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-analysis-results
-        path: |
-          logs/
-        retention-days: 7
-        
-    - name: Test Summary
-      if: always()
-      run: |
-        echo "======================================"
-        echo "TEST ANALYSIS COMPLETED"
-        echo "======================================"
-        echo "Revisa los logs arriba para ver si:"
-        echo "1. Detectó correctamente SCR 03/09/25"
-        echo "2. Leyó los 1960 registros del scraper"
-        echo "3. Añadió las columnas Visitas_03/09/2025 y Likes_03/09/2025"
-        echo "4. Actualizó las 3 hojas del histórico"
