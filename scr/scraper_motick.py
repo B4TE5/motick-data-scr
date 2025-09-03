@@ -333,7 +333,7 @@ def extract_likes_robust(driver):
     return 0
 
 def extract_year_and_km_robust(driver):
-    """Extrae año y KM de la DESCRIPCIÓN de Wallapop - CORREGIDO"""
+    """Extrae año y KM de la DESCRIPCIÓN de Wallapop - CORREGIDO PARA KM = 0"""
     year = "No especificado"
     km = "No especificado"
     
@@ -357,16 +357,24 @@ def extract_year_and_km_robust(driver):
                 continue
         
         if description_text:
-            # EXTRAER KILÓMETROS de la descripción
+            # EXTRAER KILÓMETROS de la descripción - PERMITIR KM = 0
             km_patterns = [
                 r'-\s*Kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',      # "- Kilómetros: 4.500"
-                r'-\s*kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',      # "- kilómetros: 4.500"  
+                r'-\s*Kilómetros:\s*(\d+)',                      # "- Kilómetros: 0" PERMITIR 0
+                r'-\s*kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',      # "- kilómetros: 4.500"
+                r'-\s*kilómetros:\s*(\d+)',                      # "- kilómetros: 0" PERMITIR 0  
                 r'Kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',          # "Kilómetros: 4.500"
+                r'Kilómetros:\s*(\d+)',                          # "Kilómetros: 0" PERMITIR 0
                 r'kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',          # "kilómetros: 4.500"
+                r'kilómetros:\s*(\d+)',                          # "kilómetros: 0" PERMITIR 0
                 r'KM:\s*(\d{1,3}(?:\.\d{3})*)',                  # "KM: 4.500"
+                r'KM:\s*(\d+)',                                  # "KM: 0" PERMITIR 0
                 r'km:\s*(\d{1,3}(?:\.\d{3})*)',                  # "km: 4.500"
+                r'km:\s*(\d+)',                                  # "km: 0" PERMITIR 0
                 r'(\d{1,3}(?:\.\d{3})*)\s*km',                   # "4.500 km"
+                r'(\d+)\s*km',                                   # "0 km" PERMITIR 0
                 r'(\d{1,3}(?:\.\d{3})*)\s*kilómetros',           # "4.500 kilómetros"
+                r'(\d+)\s*kilómetros',                           # "0 kilómetros" PERMITIR 0
                 r'(\d+)\s*mil\s*km',                             # "42 mil km"
             ]
             
@@ -384,9 +392,12 @@ def extract_year_and_km_robust(driver):
                             # Formato normal con puntos como separadores de miles
                             km_value = int(km_text.replace('.', ''))
                         
-                        # Validación para motos (rango amplio)
-                        if 1 <= km_value <= 999999:
-                            km = f"{km_value:,} km".replace(',', '.')
+                        # PERMITIR KM = 0 como valor válido
+                        if 0 <= km_value <= 999999:  # CAMBIADO: ahora incluye 0
+                            if km_value == 0:
+                                km = "0 km"  # Formato específico para 0 km
+                            else:
+                                km = f"{km_value:,} km".replace(',', '.')
                             break
                             
                     except:
@@ -421,7 +432,7 @@ def extract_year_and_km_robust(driver):
                 km_patterns_html = [
                     r'Kilómetros["\s:>]*</span><span[^>]*>(\d+(?:[\.\s]\d+)*)</span>',
                     r'kilómetros["\s:>]*</span><span[^>]*>(\d+(?:[\.\s]\d+)*)</span>',
-                    r'>(\d{3,7})\s*km',
+                    r'>(\d+)\s*km',  # PERMITIR 0 KM también en HTML
                 ]
                 
                 for pattern in km_patterns_html:
@@ -430,8 +441,11 @@ def extract_year_and_km_robust(driver):
                         try:
                             km_clean = match.replace('.', '').replace(',', '').replace(' ', '')
                             km_value = int(km_clean)
-                            if 1 <= km_value <= 999999:
-                                km = f"{km_value:,} km".replace(',', '.')
+                            if 0 <= km_value <= 999999:  # INCLUIR 0
+                                if km_value == 0:
+                                    km = "0 km"
+                                else:
+                                    km = f"{km_value:,} km".replace(',', '.')
                                 break
                         except:
                             continue
@@ -446,9 +460,9 @@ def extract_year_and_km_robust(driver):
     return year, km
 
 def extract_views_robust(driver):
-    """Extrae visitas con multiples estrategias"""
+    """Extrae visitas con multiples estrategias - CORREGIDO PARA FORMATO K"""
     
-    # ESTRATEGIA 1: Selectores especificos
+    # ESTRATEGIA 1: Selectores específicos
     view_selectors = [
         'span[aria-label="Views"]',
         '[aria-label*="Views"]',
@@ -462,20 +476,90 @@ def extract_views_robust(driver):
             elements = driver.find_elements(By.CSS_SELECTOR, selector)
             for element in elements:
                 text = element.text.strip()
+                
+                # MANEJAR FORMATO K (1.1k = 1,100)
+                if 'k' in text.lower():
+                    try:
+                        # Extraer número antes de 'k'
+                        k_match = re.search(r'(\d+(?:\.\d+)?)\s*k', text.lower())
+                        if k_match:
+                            k_value = float(k_match.group(1))
+                            views = int(k_value * 1000)
+                            if 0 <= views <= 500000:  # Rango ampliado
+                                return views
+                    except:
+                        pass
+                
+                # FORMATO NORMAL (número entero) - CAMBIADO elif por if
                 if text.isdigit():
                     views = int(text)
-                    if 0 <= views <= 100000:
+                    if 0 <= views <= 500000:  # Rango ampliado
                         return views
                         
                 # Buscar en aria-label
                 aria_label = element.get_attribute('aria-label') or ''
+                
+                # MANEJAR FORMATO K EN ARIA-LABEL
+                if 'k' in aria_label.lower():
+                    try:
+                        k_match = re.search(r'(\d+(?:\.\d+)?)\s*k', aria_label.lower())
+                        if k_match:
+                            k_value = float(k_match.group(1))
+                            views = int(k_value * 1000)
+                            if 0 <= views <= 500000:
+                                return views
+                    except:
+                        continue
+                
+                # FORMATO NORMAL EN ARIA-LABEL
                 numbers = re.findall(r'(\d+)', aria_label)
                 if numbers:
                     views_value = int(numbers[0])
-                    if 0 <= views_value <= 100000:
+                    if 0 <= views_value <= 500000:
                         return views_value
         except:
             continue
+    
+    # ESTRATEGIA 2: Buscar en HTML completo formato K
+    try:
+        page_source = driver.page_source
+        
+        # Buscar patrones con K
+        k_patterns = [
+            r'(\d+(?:\.\d+)?)\s*k\s*views',
+            r'views[^>]*>(\d+(?:\.\d+)?)\s*k',
+            r'(\d+(?:\.\d+)?)\s*k\s*visitas'
+        ]
+        
+        for pattern in k_patterns:
+            matches = re.finditer(pattern, page_source, re.IGNORECASE)
+            for match in matches:
+                try:
+                    k_value = float(match.group(1))
+                    views = int(k_value * 1000)
+                    if 0 <= views <= 500000:
+                        return views
+                except:
+                    continue
+        
+        # Buscar patrones normales
+        view_patterns = [
+            r'views.*?(\d+)',
+            r'view.*?(\d+)',
+            r'(\d+).*?view'
+        ]
+        
+        for pattern in view_patterns:
+            matches = re.finditer(pattern, page_source, re.IGNORECASE)
+            for match in matches:
+                try:
+                    views_value = int(match.group(1))
+                    if 0 <= views_value <= 500000:
+                        return views_value
+                except:
+                    continue
+    except:
+        pass
     
     return 0
 
@@ -795,21 +879,21 @@ def main():
             print(f"• Total visitas: {total_views:,}")
             print(f"• Total likes: {total_likes:,}")
             print(f"• Tiempo total: {elapsed_time:.1f} minutos")
-            print(f"\n📊 CALIDAD DE EXTRACCIÓN:")
-            print(f"• Titulos: {titles_ok}/{total_processed} ({titles_ok/total_processed*100:.1f}%) {'✅' if titles_ok/total_processed > 0.8 else '⚠️'}")
-            print(f"• Precios: {prices_ok}/{total_processed} ({prices_ok/total_processed*100:.1f}%) {'✅' if prices_ok/total_processed > 0.7 else '⚠️'}")
-            print(f"• Kilometraje: {km_ok}/{total_processed} ({km_ok/total_processed*100:.1f}%) {'✅' if km_ok/total_processed > 0.6 else '⚠️'}")
-            print(f"• Años: {years_ok}/{total_processed} ({years_ok/total_processed*100:.1f}%) {'✅' if years_ok/total_processed > 0.5 else '⚠️'}")
-            print(f"\n📈 PROMEDIOS:")
+            print(f"\n CALIDAD DE EXTRACCIÓN:")
+            print(f"• Titulos: {titles_ok}/{total_processed} ({titles_ok/total_processed*100:.1f}%) {'' if titles_ok/total_processed > 0.8 else '⚠️'}")
+            print(f"• Precios: {prices_ok}/{total_processed} ({prices_ok/total_processed*100:.1f}%) {'' if prices_ok/total_processed > 0.7 else '⚠️'}")
+            print(f"• Kilometraje: {km_ok}/{total_processed} ({km_ok/total_processed*100:.1f}%) {'' if km_ok/total_processed > 0.6 else '⚠️'}")
+            print(f"• Años: {years_ok}/{total_processed} ({years_ok/total_processed*100:.1f}%) {'' if years_ok/total_processed > 0.5 else '⚠️'}")
+            print(f"\n PROMEDIOS:")
             print(f"• Media visitas: {df['Visitas'].mean():.1f}")
             print(f"• Media likes: {df['Likes'].mean():.1f}")
             
             # MOSTRAR ALGUNOS EJEMPLOS FINALES
-            print(f"\n📋 EJEMPLOS DE DATOS EXTRAÍDOS:")
+            print(f"\n EJEMPLOS DE DATOS EXTRAÍDOS:")
             samples = df.head(3)
             for i, (_, row) in enumerate(samples.iterrows(), 1):
                 print(f"  {i}. {row['Titulo'][:40]}...")
-                print(f"     💰 {row['Precio']} | 📏 {row['Kilometraje']} | 📅 {row['Ano']} | 👁️ {row['Visitas']} | ❤️ {row['Likes']}")
+                print(f"      {row['Precio']} |  {row['Kilometraje']} |  {row['Ano']} | 👁 {row['Visitas']} | ❤ {row['Likes']}")
             
             # ALERTAS DE CALIDAD
             alertas = []
