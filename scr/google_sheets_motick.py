@@ -177,84 +177,99 @@ class GoogleSheetsMotick:
             return None
     
     def leer_datos_scraper_reciente(self):
-        """
-        ARREGLO DEFINITIVO: Lee datos de hojas con formato SCR DD/MM/YY
-        """
-        try:
-            spreadsheet = self.client.open_by_key(self.sheet_id)
-            hojas_disponibles = [worksheet.title for worksheet in spreadsheet.worksheets()]
-            
-            print(f"DEBUG: Hojas disponibles: {hojas_disponibles}")
-            
-            # ARREGLO CRITICO: Buscar hojas con formato SCR DD/MM/YY
-            hojas_datos = []
-            for hoja in hojas_disponibles:
-                # Verificar que empiece con "SCR " y tenga el formato correcto
-                if hoja.startswith('SCR ') and len(hoja) == 10:  # "SCR 03/09/25" = 10 caracteres
-                    try:
-                        # Extraer fecha desde "SCR 03/09/25"
-                        fecha_parte = hoja[4:]  # Quitar "SCR "
+    """
+    SOLUCION DEFINITIVA: Versión simplificada que debe funcionar
+    """
+    try:
+        spreadsheet = self.client.open_by_key(self.sheet_id)
+        hojas_disponibles = [worksheet.title for worksheet in spreadsheet.worksheets()]
+        
+        print(f"DEBUG: Hojas disponibles: {hojas_disponibles}")
+        
+        # Filtrar solo hojas SCR y obtener sus fechas
+        hojas_scr = []
+        for hoja in hojas_disponibles:
+            if hoja.startswith('SCR '):
+                print(f"DEBUG: Procesando hoja SCR: '{hoja}'")
+                try:
+                    # Extraer parte de fecha: "SCR 03/09/25" -> "03/09/25"
+                    fecha_scr = hoja[4:]  # Quitar "SCR "
+                    print(f"DEBUG: Fecha extraída: '{fecha_scr}'")
+                    
+                    # Dividir por /
+                    partes = fecha_scr.split('/')
+                    if len(partes) == 3:
+                        dia, mes, ano_2d = partes
+                        print(f"DEBUG: Partes - dia:{dia}, mes:{mes}, año:{ano_2d}")
                         
-                        # Verificar formato DD/MM/YY
-                        if len(fecha_parte) == 8 and fecha_parte[2] == '/' and fecha_parte[5] == '/':
-                            # Convertir YY a YYYY
-                            dia, mes, ano_corto = fecha_parte.split('/')
-                            
-                            # Asumir años 00-50 son 2000-2050, años 51-99 son 1951-1999
-                            if int(ano_corto) <= 50:
-                                ano_completo = f"20{ano_corto}"
-                            else:
-                                ano_completo = f"19{ano_corto}"
-                            
-                            fecha_completa = f"{dia}/{mes}/{ano_completo}"
-                            fecha_obj = datetime.strptime(fecha_completa, "%d/%m/%Y")
-                            hojas_datos.append((hoja, fecha_obj, fecha_completa))
-                            print(f"DEBUG: Hoja SCR detectada: {hoja} -> {fecha_completa}")
+                        # Convertir año de 2 dígitos a 4 dígitos
+                        ano_int = int(ano_2d)
+                        if ano_int <= 30:  # 00-30 = 2000-2030
+                            ano_completo = 2000 + ano_int
+                        else:  # 31-99 = 1931-1999  
+                            ano_completo = 1900 + ano_int
                         
-                    except Exception as e:
-                        print(f"DEBUG: Error procesando hoja {hoja}: {str(e)}")
-                        continue
-            
-            if not hojas_datos:
-                print("ERROR: No se encontraron hojas de datos del scraper")
-                print(f"DEBUG: Se buscaron hojas que empiecen con 'SCR ' en: {hojas_disponibles}")
-                return None, None
-            
-            # Ordenar por fecha (mas reciente primero)
-            hojas_datos.sort(key=lambda x: x[1], reverse=True)
-            hoja_mas_reciente, fecha_obj, fecha_str = hojas_datos[0]
-            
-            print(f"LEYENDO: Datos mas recientes desde {hoja_mas_reciente} ({fecha_str})")
-            
-            # Leer la hoja mas reciente
-            worksheet = spreadsheet.worksheet(hoja_mas_reciente)
-            data = worksheet.get_all_values()
-            
-            if not data:
-                print(f"ERROR: Hoja {hoja_mas_reciente} esta vacia")
-                return None, None
-            
-            headers = data[0]
-            rows = data[1:]
-            
-            if not rows:
-                print(f"ERROR: Hoja {hoja_mas_reciente} solo tiene headers")
-                return None, None
-            
-            df = pd.DataFrame(rows, columns=headers)
-            
-            # Limpiar columnas numericas
-            df['Visitas'] = pd.to_numeric(df['Visitas'], errors='coerce').fillna(0).astype(int)
-            df['Likes'] = pd.to_numeric(df['Likes'], errors='coerce').fillna(0).astype(int)
-            
-            print(f"LEIDO: {len(df)} motos desde {hoja_mas_reciente}")
-            return df, fecha_str
-            
-        except Exception as e:
-            print(f"ERROR LECTURA SCRAPER: {str(e)}")
-            import traceback
-            traceback.print_exc()
+                        print(f"DEBUG: Año completo calculado: {ano_completo}")
+                        
+                        # Crear fecha completa
+                        fecha_completa = f"{dia}/{mes}/{ano_completo}"
+                        fecha_obj = datetime.strptime(fecha_completa, "%d/%m/%Y")
+                        
+                        hojas_scr.append({
+                            'nombre': hoja,
+                            'fecha_obj': fecha_obj, 
+                            'fecha_str': fecha_completa
+                        })
+                        print(f"SUCCESS: '{hoja}' -> {fecha_completa}")
+                        
+                except Exception as e:
+                    print(f"ERROR: Procesando '{hoja}': {str(e)}")
+                    continue
+        
+        print(f"DEBUG: Total hojas SCR válidas encontradas: {len(hojas_scr)}")
+        
+        if not hojas_scr:
+            print("ERROR: No se encontraron hojas SCR válidas")
+            # Listar todas las hojas SCR para debug
+            scr_hojas = [h for h in hojas_disponibles if h.startswith('SCR ')]
+            print(f"DEBUG: Hojas SCR detectadas: {scr_hojas}")
             return None, None
+        
+        # Ordenar por fecha (más reciente primero)
+        hojas_scr.sort(key=lambda x: x['fecha_obj'], reverse=True)
+        hoja_reciente = hojas_scr[0]
+        
+        print(f"LEYENDO: Hoja más reciente '{hoja_reciente['nombre']}' ({hoja_reciente['fecha_str']})")
+        
+        # Leer datos de la hoja
+        worksheet = spreadsheet.worksheet(hoja_reciente['nombre'])
+        data = worksheet.get_all_values()
+        
+        if not data or len(data) < 2:
+            print(f"ERROR: Hoja '{hoja_reciente['nombre']}' vacía o sin datos")
+            return None, None
+        
+        # Crear DataFrame
+        headers = data[0]
+        rows = data[1:]
+        df = pd.DataFrame(rows, columns=headers)
+        
+        print(f"SUCCESS: Leídos {len(df)} registros desde '{hoja_reciente['nombre']}'")
+        print(f"DEBUG: Columnas encontradas: {list(df.columns)[:5]}...")  # Mostrar primeras 5 columnas
+        
+        # Limpiar columnas numéricas básicas
+        if 'Visitas' in df.columns:
+            df['Visitas'] = pd.to_numeric(df['Visitas'], errors='coerce').fillna(0).astype(int)
+        if 'Likes' in df.columns:
+            df['Likes'] = pd.to_numeric(df['Likes'], errors='coerce').fillna(0).astype(int)
+        
+        return df, hoja_reciente['fecha_str']
+        
+    except Exception as e:
+        print(f"ERROR CRÍTICO en leer_datos_scraper_reciente: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None, None
     
     def guardar_historico_con_hojas_originales(self, df_historico, fecha_procesamiento):
         """
