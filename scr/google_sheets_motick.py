@@ -1,6 +1,6 @@
 """
-Google Sheets Handler para Motick Scraper - ARREGLO DEFINITIVO
-Corrige el problema de formato de hojas SCR vs Datos
+Google Sheets Handler para Motick Scraper - ARREGLO DEFINITIVO CORREGIDO
+Corrige el problema de lectura de hojas SCR
 """
 
 import gspread
@@ -177,57 +177,102 @@ class GoogleSheetsMotick:
             return None
     
     def leer_datos_scraper_reciente(self):
+        """
+        CORRECCION CRITICA: Lee hojas SCR correctamente
+        """
         try:
             spreadsheet = self.client.open_by_key(self.sheet_id)
             hojas_disponibles = [worksheet.title for worksheet in spreadsheet.worksheets()]
             
             print(f"DEBUG: Hojas disponibles: {hojas_disponibles}")
             
-            # Buscar hojas SCR de forma más simple
+            # Buscar hojas SCR con mejor manejo de errores
             hojas_scr = []
             for hoja in hojas_disponibles:
                 if hoja.startswith('SCR '):
+                    print(f"DEBUG: Procesando hoja: {hoja}")
                     try:
                         fecha_parte = hoja[4:]  # "03/09/25"
+                        print(f"DEBUG: Fecha extraida: '{fecha_parte}'")
+                        
                         partes = fecha_parte.split('/')
+                        print(f"DEBUG: Partes fecha: {partes}")
+                        
                         if len(partes) == 3:
                             dia, mes, ano = partes
-                            ano_completo = f"20{ano}" if int(ano) <= 30 else f"19{ano}"
+                            print(f"DEBUG: Parseando - Dia:{dia} Mes:{mes} Ano:{ano}")
+                            
+                            # Convertir ano de 2 digitos a 4 digitos
+                            ano_int = int(ano)
+                            if ano_int <= 30:  # 00-30 = 2000-2030
+                                ano_completo = f"20{ano}"
+                            else:  # 31-99 = 1931-1999
+                                ano_completo = f"19{ano}"
+                            
                             fecha_str = f"{dia}/{mes}/{ano_completo}"
+                            print(f"DEBUG: Fecha completa: {fecha_str}")
+                            
                             fecha_obj = datetime.strptime(fecha_str, "%d/%m/%Y")
                             hojas_scr.append((hoja, fecha_obj, fecha_str))
-                            print(f"SCR detectada: {hoja} -> {fecha_str}")
-                    except:
+                            print(f"SCR detectada exitosamente: {hoja} -> {fecha_str}")
+                        else:
+                            print(f"DEBUG: Formato incorrecto, partes != 3: {len(partes)}")
+                            
+                    except Exception as e:
+                        print(f"DEBUG: Error procesando {hoja}: {str(e)}")
                         continue
+                else:
+                    print(f"DEBUG: Ignorando hoja (no es SCR): {hoja}")
+            
+            print(f"DEBUG: Total hojas SCR encontradas: {len(hojas_scr)}")
             
             if not hojas_scr:
+                print("ERROR: No se encontraron hojas SCR validas")
+                print(f"DEBUG: Se buscaron hojas que empiecen con 'SCR ' en: {hojas_disponibles}")
                 return None, None
             
-            # Tomar la más reciente
+            # Tomar la mas reciente
             hojas_scr.sort(key=lambda x: x[1], reverse=True)
             hoja_reciente = hojas_scr[0]
             
-            # Leer datos
+            print(f"DEBUG: Hoja mas reciente seleccionada: {hoja_reciente[0]} ({hoja_reciente[2]})")
+            
+            # Leer datos de la hoja mas reciente
             worksheet = spreadsheet.worksheet(hoja_reciente[0])
             data = worksheet.get_all_values()
             
+            print(f"DEBUG: Datos brutos obtenidos: {len(data)} filas")
+            
             if len(data) < 2:
+                print("ERROR: Hoja sin datos suficientes")
                 return None, None
             
-            df = pd.DataFrame(data[1:], columns=data[0])
-            df['Visitas'] = pd.to_numeric(df['Visitas'], errors='coerce').fillna(0).astype(int)
-            df['Likes'] = pd.to_numeric(df['Likes'], errors='coerce').fillna(0).astype(int)
+            # Crear DataFrame
+            headers = data[0]
+            rows = data[1:]
+            df = pd.DataFrame(rows, columns=headers)
             
-            print(f"LEIDO: {len(df)} motos desde {hoja_reciente[0]}")
-            return df, hoja_reciente[2]
+            print(f"DEBUG: DataFrame creado: {len(df)} filas x {len(df.columns)} columnas")
+            print(f"DEBUG: Columnas: {list(df.columns)}")
+            
+            # Limpiar columnas numericas
+            if 'Visitas' in df.columns:
+                df['Visitas'] = pd.to_numeric(df['Visitas'], errors='coerce').fillna(0).astype(int)
+            if 'Likes' in df.columns:
+                df['Likes'] = pd.to_numeric(df['Likes'], errors='coerce').fillna(0).astype(int)
+            
+            print(f"EXITO: {len(df)} motos leidas desde {hoja_reciente[0]}")
+            return df, hoja_reciente[2]  # Devolver DataFrame y fecha_str
             
         except Exception as e:
-            print(f"ERROR: {str(e)}")
+            print(f"ERROR CRITICO en leer_datos_scraper_reciente: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return None, None
     
     def guardar_historico_con_hojas_originales(self, df_historico, fecha_procesamiento):
         """
-        VERSIÓN COMPLETA: Guarda en 3 hojas como requiere el usuario
+        VERSION COMPLETA: Guarda en 3 hojas como requiere el usuario
         1. Data_Historico (todas las motos ordenadas)
         2. Motos_Activas (solo activas por Likes_Totales DESC)
         3. Motos_Vendidas (solo vendidas por Fecha_Venta DESC)
