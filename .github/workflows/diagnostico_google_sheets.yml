@@ -1,4 +1,4 @@
-name: 🔍 Diagnóstico Google Sheets
+name: Diagnóstico Google Sheets
 
 on:
   workflow_dispatch:
@@ -51,16 +51,16 @@ jobs:
         credentials_json = os.getenv('GOOGLE_CREDENTIALS_JSON')
         sheet_id = os.getenv('GOOGLE_SHEET_ID_MOTICK')
 
-        print(f'🔍 VERIFICANDO CONFIGURACIÓN:')
-        print(f'   GOOGLE_CREDENTIALS_JSON: {\"✅ Configurado\" if credentials_json else \"❌ Faltante\"}')
-        print(f'   GOOGLE_SHEET_ID_MOTICK: {sheet_id if sheet_id else \"❌ Faltante\"}')
+        print(f' VERIFICANDO CONFIGURACIÓN:')
+        print(f'   GOOGLE_CREDENTIALS_JSON: {\" Configurado\" if credentials_json else \" Faltante\"}')
+        print(f'   GOOGLE_SHEET_ID_MOTICK: {sheet_id if sheet_id else \" Faltante\"}')
 
         if not credentials_json:
-            print('❌ ERROR CRÍTICO: GOOGLE_CREDENTIALS_JSON no encontrado en secrets')
+            print(' ERROR CRÍTICO: GOOGLE_CREDENTIALS_JSON no encontrado en secrets')
             exit(1)
         
         if not sheet_id:
-            print('❌ ERROR CRÍTICO: GOOGLE_SHEET_ID_MOTICK no encontrado en secrets')
+            print(' ERROR CRÍTICO: GOOGLE_SHEET_ID_MOTICK no encontrado en secrets')
             exit(1)
 
         # Verificar service account email
@@ -69,12 +69,12 @@ jobs:
             service_email = cred_dict.get('client_email', 'NO_ENCONTRADO')
             project_id = cred_dict.get('project_id', 'NO_ENCONTRADO')
             
-            print(f'🤖 SERVICE ACCOUNT:')
+            print(f' SERVICE ACCOUNT:')
             print(f'   Email: {service_email}')
             print(f'   Proyecto: {project_id}')
             
         except Exception as e:
-            print(f'❌ ERROR: Credenciales JSON inválidas: {str(e)}')
+            print(f' ERROR: Credenciales JSON inválidas: {str(e)}')
             exit(1)
 
         # Crear handler y probar conexión
@@ -88,15 +88,15 @@ jobs:
             exito = gs_handler.test_connection()
             
             if exito:
-                print(f'\\n🎉 DIAGNÓSTICO: ✅ SIN PROBLEMAS')
+                print(f'\\n DIAGNÓSTICO:  SIN PROBLEMAS')
                 print(f'El sistema debería funcionar correctamente')
             else:
-                print(f'\\n⚠️  DIAGNÓSTICO: ❌ PROBLEMAS ENCONTRADOS')
+                print(f'\\n⚠  DIAGNÓSTICO:  PROBLEMAS ENCONTRADOS')
                 print(f'Sigue las instrucciones de solución mostradas arriba')
                 exit(1)
                 
         except Exception as e:
-            print(f'❌ ERROR CRÍTICO EN DIAGNÓSTICO: {str(e)}')
+            print(f' ERROR CRÍTICO EN DIAGNÓSTICO: {str(e)}')
             import traceback
             traceback.print_exc()
             exit(1)
@@ -106,9 +106,9 @@ jobs:
       if: failure()
       run: |
         echo ""
-        echo "🚨 SOLUCIONES PARA PROBLEMAS COMUNES:"
+        echo " SOLUCIONES PARA PROBLEMAS COMUNES:"
         echo ""
-        echo "1️⃣ PROBLEMA: Google Sheet no compartido"
+        echo " PROBLEMA: Google Sheet no compartido"
         echo "   SOLUCIÓN:"
         echo "   • Abre: https://docs.google.com/spreadsheets/d/${{ secrets.GOOGLE_SHEET_ID_MOTICK }}"
         echo "   • Clic en 'Compartir' (botón azul)"
@@ -116,13 +116,13 @@ jobs:
         echo "   • Permisos: Editor"
         echo "   • Clic en 'Enviar'"
         echo ""
-        echo "2️⃣ PROBLEMA: APIs no habilitadas"
+        echo " PROBLEMA: APIs no habilitadas"
         echo "   SOLUCIÓN:"
         echo "   • Ve a: https://console.cloud.google.com/apis/dashboard?project=motick-data-scraper"
         echo "   • Habilitar: Google Sheets API"
         echo "   • Habilitar: Google Drive API"
         echo ""
-        echo "3️⃣ PROBLEMA: Sheet no es nativo de Google"
+        echo " PROBLEMA: Sheet no es nativo de Google"
         echo "   SOLUCIÓN:"
         echo "   • Abre el sheet en Google Drive"
         echo "   • Clic derecho → Abrir con → Google Sheets"
