@@ -177,133 +177,52 @@ class GoogleSheetsMotick:
             return None
     
     def leer_datos_scraper_reciente(self):
-        """
-        VERSION CON DEBUG EXTREMO - ENCUENTRA EL BUG EXACTO
-        """
         try:
             spreadsheet = self.client.open_by_key(self.sheet_id)
             hojas_disponibles = [worksheet.title for worksheet in spreadsheet.worksheets()]
             
             print(f"DEBUG: Hojas disponibles: {hojas_disponibles}")
             
-            # Debug cada hoja individualmente
-            hojas_datos = []
+            # Buscar hojas SCR de forma más simple
+            hojas_scr = []
             for hoja in hojas_disponibles:
-                print(f"\n=== PROCESANDO HOJA: '{hoja}' ===")
-                print(f"DEBUG: Empieza con 'SCR ': {hoja.startswith('SCR ')}")
-                print(f"DEBUG: Longitud total: {len(hoja)}")
-                
                 if hoja.startswith('SCR '):
-                    print(f"HOJA '{hoja}' empieza con SCR")
-                    
-                    if len(hoja) == 10:
-                        print(f"HOJA '{hoja}' tiene longitud correcta (10)")
-                        
-                        try:
-                            # Extraer fecha desde "SCR 03/09/25"
-                            fecha_parte = hoja[4:]  # Quitar "SCR "
-                            print(f"DEBUG: Fecha extraída: '{fecha_parte}'")
-                            print(f"DEBUG: Longitud fecha_parte: {len(fecha_parte)}")
-                            print(f"DEBUG: Caracter pos 2: '{fecha_parte[2] if len(fecha_parte) > 2 else 'N/A'}'")
-                            print(f"DEBUG: Caracter pos 5: '{fecha_parte[5] if len(fecha_parte) > 5 else 'N/A'}'")
-                            
-                            # Verificar formato DD/MM/YY
-                            if len(fecha_parte) == 8 and fecha_parte[2] == '/' and fecha_parte[5] == '/':
-                                print(f"✓ FORMATO DE FECHA CORRECTO")
-                                
-                                # Convertir YY a YYYY
-                                partes = fecha_parte.split('/')
-                                print(f"DEBUG: Partes split: {partes}")
-                                
-                                if len(partes) == 3:
-                                    dia, mes, ano_corto = partes
-                                    print(f"DEBUG: dia='{dia}', mes='{mes}', ano_corto='{ano_corto}'")
-                                    
-                                    try:
-                                        # Asumir años 00-50 son 2000-2050, años 51-99 son 1951-1999
-                                        ano_int = int(ano_corto)
-                                        if ano_int <= 50:
-                                            ano_completo = f"20{ano_corto}"
-                                        else:
-                                            ano_completo = f"19{ano_corto}"
-                                        
-                                        print(f"DEBUG: Año convertido: {ano_corto} -> {ano_completo}")
-                                        
-                                        fecha_completa = f"{dia}/{mes}/{ano_completo}"
-                                        print(f"DEBUG: Fecha completa construida: '{fecha_completa}'")
-                                        
-                                        fecha_obj = datetime.strptime(fecha_completa, "%d/%m/%Y")
-                                        print(f"FECHA OBJETO CREADO: {fecha_obj}")
-                                        
-                                        hojas_datos.append((hoja, fecha_obj, fecha_completa))
-                                        print(f" HOJA AÑADIDA EXITOSAMENTE: '{hoja}' -> {fecha_completa}")
-                                        
-                                    except Exception as e:
-                                        print(f" ERROR EN CONVERSIÓN DE FECHA: {str(e)}")
-                                        import traceback
-                                        traceback.print_exc()
-                                else:
-                                    print(f" ERROR: Split incorrecto, {len(partes)} partes en lugar de 3")
-                            else:
-                                print(f" FORMATO INCORRECTO:")
-                                print(f"   - Longitud: {len(fecha_parte)} (esperado: 8)")
-                                print(f"   - Pos 2: '{fecha_parte[2] if len(fecha_parte) > 2 else 'N/A'}' (esperado: '/')")
-                                print(f"   - Pos 5: '{fecha_parte[5] if len(fecha_parte) > 5 else 'N/A'}' (esperado: '/')")
-                            
-                        except Exception as e:
-                            print(f"ERROR PROCESANDO '{hoja}': {str(e)}")
-                            import traceback
-                            traceback.print_exc()
-                            continue
-                    else:
-                        print(f" HOJA '{hoja}' longitud incorrecta: {len(hoja)} (esperado: 10)")
-                else:
-                    print(f"- HOJA '{hoja}' no empieza con 'SCR ', ignorando")
+                    try:
+                        fecha_parte = hoja[4:]  # "03/09/25"
+                        partes = fecha_parte.split('/')
+                        if len(partes) == 3:
+                            dia, mes, ano = partes
+                            ano_completo = f"20{ano}" if int(ano) <= 30 else f"19{ano}"
+                            fecha_str = f"{dia}/{mes}/{ano_completo}"
+                            fecha_obj = datetime.strptime(fecha_str, "%d/%m/%Y")
+                            hojas_scr.append((hoja, fecha_obj, fecha_str))
+                            print(f"SCR detectada: {hoja} -> {fecha_str}")
+                    except:
+                        continue
             
-            print(f"\n=== RESUMEN FINAL ===")
-            print(f"DEBUG: Total hojas procesadas: {len([h for h in hojas_disponibles if h.startswith('SCR ')])}")
-            print(f"DEBUG: Total hojas válidas encontradas: {len(hojas_datos)}")
-            print(f"DEBUG: Hojas válidas: {[h[0] for h in hojas_datos]}")
-            
-            if not hojas_datos:
-                print(" ERROR: No se encontraron hojas de datos del scraper")
-                print(f"DEBUG: Hojas SCR disponibles: {[h for h in hojas_disponibles if h.startswith('SCR ')]}")
+            if not hojas_scr:
                 return None, None
             
-            # Ordenar por fecha (mas reciente primero)
-            hojas_datos.sort(key=lambda x: x[1], reverse=True)
-            hoja_mas_reciente, fecha_obj, fecha_str = hojas_datos[0]
+            # Tomar la más reciente
+            hojas_scr.sort(key=lambda x: x[1], reverse=True)
+            hoja_reciente = hojas_scr[0]
             
-            print(f" LEYENDO: Datos mas recientes desde {hoja_mas_reciente} ({fecha_str})")
-            
-            # Leer la hoja mas reciente
-            worksheet = spreadsheet.worksheet(hoja_mas_reciente)
+            # Leer datos
+            worksheet = spreadsheet.worksheet(hoja_reciente[0])
             data = worksheet.get_all_values()
             
-            if not data:
-                print(f"ERROR: Hoja {hoja_mas_reciente} esta vacia")
+            if len(data) < 2:
                 return None, None
             
-            headers = data[0]
-            rows = data[1:]
-            
-            if not rows:
-                print(f"ERROR: Hoja {hoja_mas_reciente} solo tiene headers")
-                return None, None
-            
-            df = pd.DataFrame(rows, columns=headers)
-            
-            # Limpiar columnas numericas
+            df = pd.DataFrame(data[1:], columns=data[0])
             df['Visitas'] = pd.to_numeric(df['Visitas'], errors='coerce').fillna(0).astype(int)
             df['Likes'] = pd.to_numeric(df['Likes'], errors='coerce').fillna(0).astype(int)
             
-            print(f" SUCCESS: {len(df)} motos leídas desde {hoja_mas_reciente}")
-            return df, fecha_str
+            print(f"LEIDO: {len(df)} motos desde {hoja_reciente[0]}")
+            return df, hoja_reciente[2]
             
         except Exception as e:
-            print(f"ERROR CRÍTICO: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            print(f"ERROR: {str(e)}")
             return None, None
     
     def guardar_historico_con_hojas_originales(self, df_historico, fecha_procesamiento):
