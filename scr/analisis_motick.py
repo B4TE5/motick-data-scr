@@ -1,13 +1,13 @@
 """
-Analizador Historico Motick - Version Google Sheets V8.1 CORREGIDA FINAL
+Analizador Historico Motick - Version Google Sheets V8.2 CORREGIDO
 Lee datos del scraper desde Google Sheets y actualiza el historico evolutivo
 
-CORRECCIONES CRITICAS VERSION 8.1:
-- Lee hojas SCR en lugar de Datos_
+CORRECCIONES VERSION 8.2:
+- ARREGLO CRITICO: tuple indices error corregido
+- URL como identificador unico principal (SIN PRECIO)
+- Mantiene hojas originales: Data_Historico
+- Añade Visitas_Totales y Likes_Totales
 - Maneja valores NA correctamente
-- NO borra el historico existente
-- Nomenclatura SCR consistente
-- Limpia valores antes de subir a Google Sheets
 """
 
 import sys
@@ -89,7 +89,7 @@ class AnalizadorHistoricoMotick:
     def crear_id_unico_real(self, fila):
         """
         Crea ID unico basado SOLO en: URL + cuenta + titulo + km
-        CORRECCION CRITICA V8.1: NO INCLUYE PRECIO (puede cambiar)
+        CORRECCION CRITICA V8.2: NO INCLUYE PRECIO (puede cambiar)
         """
         try:
             url = str(fila.get('URL', '')).strip()
@@ -136,7 +136,7 @@ class AnalizadorHistoricoMotick:
     def mostrar_header(self):
         """Muestra el header del sistema"""
         print("="*80)
-        print("ANALIZADOR HISTORICO MOTICK V8.1 - VERSION GOOGLE SHEETS CORREGIDA FINAL")
+        print("ANALIZADOR HISTORICO MOTICK V8.2 - VERSION GOOGLE SHEETS CORREGIDA")
         print("="*80)
         print(f"Fecha procesamiento: {self.fecha_display}")
         print("Logica: URL como identificador unico principal (SIN PRECIO)")
@@ -214,80 +214,49 @@ class AnalizadorHistoricoMotick:
         
         return df
         
-    def leer_datos_scraper_reciente(self):
-        """
-        CORREGIDO: Lee datos desde hojas SCR en lugar de Datos_
-        """
+    def leer_datos_scraper(self):
+        """CORREGIDO: Lee los datos mas recientes del scraper desde Google Sheets"""
         try:
-            spreadsheet = self.gs_handler.client.open_by_key(self.gs_handler.sheet_id)
-            hojas_disponibles = [worksheet.title for worksheet in spreadsheet.worksheets()]
+            # ARREGLO CRITICO: Verificar que el método devuelve DataFrame, no tupla
+            result = self.gs_handler.leer_datos_scraper_reciente()
             
-            print(f"DEBUG: Hojas disponibles: {hojas_disponibles}")
+            # VALIDACION: Verificar que result es una tupla de (DataFrame, fecha_str)
+            if isinstance(result, tuple) and len(result) == 2:
+                df_nuevo, fecha_str = result
+                print(f"DEBUG: Tipo de df_nuevo: {type(df_nuevo)}")
+                print(f"DEBUG: Tipo de fecha_str: {type(fecha_str)}")
+            else:
+                raise Exception(f"leer_datos_scraper_reciente devolvió tipo inesperado: {type(result)}")
             
-            # CORRECCION: Buscar hojas SCR (formato: SCR DD/MM/YY)
-            hojas_datos = []
-            for hoja in hojas_disponibles:
-                if hoja.startswith('SCR ') and len(hoja.split(' ')) == 2:
-                    try:
-                        fecha_str = hoja.replace('SCR ', '')
-                        # Convertir DD/MM/YY a DD/MM/YYYY
-                        if len(fecha_str.split('/')) == 3 and len(fecha_str.split('/')[-1]) == 2:
-                            dia, mes, ano = fecha_str.split('/')
-                            ano_completo = f"20{ano}"  # Asumir 20XX
-                            fecha_completa = f"{dia}/{mes}/{ano_completo}"
-                            fecha_obj = datetime.strptime(fecha_completa, "%d/%m/%Y")
-                            hojas_datos.append((hoja, fecha_obj, fecha_completa))
-                    except:
-                        continue
+            # VALIDACION: Asegurar que df_nuevo es un DataFrame
+            if not isinstance(df_nuevo, pd.DataFrame):
+                raise Exception(f"df_nuevo no es DataFrame, es: {type(df_nuevo)}")
             
-            if not hojas_datos:
-                print("ERROR: No se encontraron hojas de datos del scraper SCR")
-                return None, None
+            if df_nuevo is None or df_nuevo.empty:
+                raise Exception("No se encontraron datos del scraper en Google Sheets")
             
-            # Ordenar por fecha (mas reciente primero)
-            hojas_datos.sort(key=lambda x: x[1], reverse=True)
-            hoja_mas_reciente, fecha_obj, fecha_str = hojas_datos[0]
-            
-            print(f"LEYENDO: Datos mas recientes desde {hoja_mas_reciente} ({fecha_str})")
-            
-            # Leer la hoja mas reciente
-            worksheet = spreadsheet.worksheet(hoja_mas_reciente)
-            data = worksheet.get_all_values()
-            
-            if not data:
-                print(f"ERROR: Hoja {hoja_mas_reciente} esta vacia")
-                return None, None
-            
-            headers = data[0]
-            rows = data[1:]
-            
-            if not rows:
-                print(f"ERROR: Hoja {hoja_mas_reciente} solo tiene headers")
-                return None, None
-            
-            df = pd.DataFrame(rows, columns=headers)
-            
-            # Validar y normalizar
-            df = self.validar_estructura_archivo(df)
+            df_nuevo = self.validar_estructura_archivo(df_nuevo)
             
             # Crear ID_Unico_Real para cada moto (SIN PRECIO)
-            df['ID_Unico_Real'] = df.apply(self.crear_id_unico_real, axis=1)
+            df_nuevo['ID_Unico_Real'] = df_nuevo.apply(self.crear_id_unico_real, axis=1)
             
             # Limpiar columnas numericas
-            df['Visitas'] = pd.to_numeric(df['Visitas'], errors='coerce').fillna(0).astype(int)
-            df['Likes'] = pd.to_numeric(df['Likes'], errors='coerce').fillna(0).astype(int)
+            df_nuevo['Visitas'] = pd.to_numeric(df_nuevo['Visitas'], errors='coerce').fillna(0).astype(int)
+            df_nuevo['Likes'] = pd.to_numeric(df_nuevo['Likes'], errors='coerce').fillna(0).astype(int)
             
-            self.stats['total_archivo_nuevo'] = len(df)
+            self.stats['total_archivo_nuevo'] = len(df_nuevo)
             print(f"Motos en datos del scraper: {self.stats['total_archivo_nuevo']:,}")
             
             # Extraer fecha
-            self.fecha_actual, self.fecha_display = self.extraer_fecha_de_datos(df)
+            self.fecha_actual, self.fecha_display = self.extraer_fecha_de_datos(df_nuevo)
             self.fecha_str = self.fecha_actual.strftime("%Y%m%d")
             
-            return df, fecha_str
+            return df_nuevo
             
         except Exception as e:
             print(f"ERROR leyendo datos del scraper: {str(e)}")
+            import traceback
+            traceback.print_exc()
             raise
             
     def obtener_columnas_fechas(self, df):
@@ -422,11 +391,17 @@ class AnalizadorHistoricoMotick:
             
     def procesar_motos_nuevas_y_existentes(self, df_nuevo, df_historico):
         """
-        LOGICA CORREGIDA V8.1: USA URLs como identificador principal
-        NO INCLUYE PRECIO EN COMPARACIONES
+        LOGICA CORREGIDA V8.2: USA URLs como identificador principal
+        ARREGLO: Manejo correcto de DataFrame vs tupla
         """
         
         try:
+            # VALIDACION CRITICA: Verificar tipos
+            if not isinstance(df_nuevo, pd.DataFrame):
+                raise TypeError(f"df_nuevo debe ser DataFrame, recibido: {type(df_nuevo)}")
+            if not isinstance(df_historico, pd.DataFrame):
+                raise TypeError(f"df_historico debe ser DataFrame, recibido: {type(df_historico)}")
+                
             col_visitas_hoy = f"Visitas_{self.fecha_display}"
             col_likes_hoy = f"Likes_{self.fecha_display}"
             
@@ -444,9 +419,9 @@ class AnalizadorHistoricoMotick:
                 print(f"ADVERTENCIA: Las columnas para {self.fecha_display} ya existen")
                 print("Se sobrescribiran los datos existentes")
             
-            # URL COMO IDENTIFICADOR PRINCIPAL
+            # URL COMO IDENTIFICADOR PRINCIPAL - ARREGLO CRITICO
             urls_historico = set(df_historico['URL'].values)
-            urls_nuevos = set(df_nuevo['URL'].values)
+            urls_nuevos = set(df_nuevo['URL'].values)  # ESTA ERA LA LINEA QUE FALLABA
             
             motos_nuevas_urls = urls_nuevos - urls_historico
             motos_existentes_urls = urls_nuevos & urls_historico
@@ -628,65 +603,13 @@ class AnalizadorHistoricoMotick:
             traceback.print_exc()
             raise
             
-    def guardar_historico_con_hojas_originales(self, df_historico, fecha_procesamiento):
-        """
-        CORREGIDO: Maneja valores NA y NO borra el historico
-        """
-        try:
-            spreadsheet = self.gs_handler.client.open_by_key(self.gs_handler.sheet_id)
-            
-            # CORRECCION CRITICA: Limpiar valores NA ANTES de procesar
-            print(f"LIMPIANDO: Valores NA del DataFrame...")
-            
-            # Reemplazar todos los valores NA con strings vacios
-            df_historico_limpio = df_historico.fillna('')
-            
-            # Convertir todas las columnas object a string para evitar problemas
-            for col in df_historico_limpio.columns:
-                if df_historico_limpio[col].dtype == 'object':
-                    df_historico_limpio[col] = df_historico_limpio[col].astype(str)
-            
-            # HOJA PRINCIPAL: Data_Historico - NO BORRAR PREMATURAMENTE
-            try:
-                worksheet_main = spreadsheet.worksheet("Data_Historico")
-                print(f"ACTUALIZANDO: Hoja principal Data_Historico")
-                
-            except gspread.WorksheetNotFound:
-                worksheet_main = spreadsheet.add_worksheet(
-                    title="Data_Historico",
-                    rows=len(df_historico_limpio) + 50,
-                    cols=len(df_historico_limpio.columns) + 20
-                )
-                print(f"CREANDO: Nueva hoja Data_Historico")
-            
-            # Subir datos principales - CON VALORES LIMPIOS
-            headers = df_historico_limpio.columns.values.tolist()
-            data_rows = df_historico_limpio.values.tolist()
-            all_data = [headers] + data_rows
-            
-            # ACTUALIZAR completamente la hoja (limpiar solo cuando tenemos datos listos)
-            worksheet_main.clear()
-            worksheet_main.update(all_data)
-            
-            print(f"EXITO: Historico actualizado en Data_Historico")
-            print(f"DATOS: {len(df_historico_limpio)} filas x {len(df_historico_limpio.columns)} columnas")
-            print(f"URL: https://docs.google.com/spreadsheets/d/{self.gs_handler.sheet_id}")
-            
-            return True
-            
-        except Exception as e:
-            print(f"ERROR GUARDANDO HISTORICO: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return False
-            
     def mostrar_resumen_final(self):
         """Muestra el resumen final"""
         tiempo_total = (datetime.now() - self.tiempo_inicio).total_seconds()
         self.stats['tiempo_ejecucion'] = tiempo_total
         
         print(f"\n{'='*80}")
-        print("PROCESAMIENTO COMPLETADO V8.1 CORREGIDO FINAL")
+        print("PROCESAMIENTO COMPLETADO V8.2 CORREGIDO")
         print("="*80)
         print(f"Fecha procesada: {self.fecha_display}")
         print(f"Motos en datos del scraper: {self.stats['total_archivo_nuevo']:,}")
@@ -709,18 +632,18 @@ class AnalizadorHistoricoMotick:
             print("Las motos con errores mantuvieron sus datos anteriores")
         
         print("\nHistorico evolutivo consolidado exitosamente!")
-        print("LOGICA CORREGIDA V8.1: URL como identificador unico (SIN PRECIO)")
-        print("CORRECCION: Lee hojas SCR, maneja valores NA, no borra historico")
+        print("LOGICA CORREGIDA V8.2: URL como identificador unico (SIN PRECIO)")
+        print("Hojas: Data_Historico (principal)")
         
     def ejecutar(self):
-        """Funcion principal que ejecuta todo el proceso"""
+        """Funcion principal que ejecuta todo el proceso - CORREGIDA"""
         try:
             # 1. Inicializar Google Sheets
             if not self.inicializar_google_sheets():
                 return False
             
-            # 2. Leer datos del scraper mas reciente (SCR)
-            df_nuevo = self.leer_datos_scraper_reciente()
+            # 2. Leer datos del scraper mas reciente - ARREGLO CRITICO
+            df_nuevo = self.leer_datos_scraper()
             
             # 3. Mostrar header con fecha correcta
             self.mostrar_header()
@@ -732,14 +655,14 @@ class AnalizadorHistoricoMotick:
                 # Primera ejecucion
                 df_historico_final = self.primera_ejecucion(df_nuevo)
             else:
-                # Actualizar historico existente
+                # Actualizar historico existente - ARREGLO CRITICO
                 df_historico_final = self.procesar_motos_nuevas_y_existentes(df_nuevo, df_historico_existente)
                 
             self.stats['total_historico'] = len(df_historico_final)
             
             # 5. Guardar historico actualizado en Google Sheets
             print("\nGuardando historico actualizado en Google Sheets...")
-            success = self.guardar_historico_con_hojas_originales(
+            success = self.gs_handler.guardar_historico_con_hojas_originales(
                 df_historico_final, 
                 self.fecha_display
             )
@@ -771,16 +694,16 @@ class AnalizadorHistoricoMotick:
             return False
 
 def main():
-    """Funcion principal del analizador"""
-    print("Iniciando Analizador Historico MOTICK V8.1 - Version Google Sheets CORREGIDA FINAL...")
-    print("VERSION AUTOMATIZADA V8.1:")
+    """Funcion principal del analizador - CORREGIDA"""
+    print("Iniciando Analizador Historico MOTICK V8.2 - Version Google Sheets CORREGIDA FINAL...")
+    print("VERSION AUTOMATIZADA V8.2:")
     print("   • Lee datos del scraper desde Google Sheets (hojas SCR)")
     print("   • Actualiza historico evolutivo en Google Sheets")
     print("   • USA URL como identificador unico principal (SIN PRECIO)")
     print("   • Mantiene hojas originales: Data_Historico")
     print("   • Cada ejecucion anade: Visitas_FECHA y Likes_FECHA")
     print("   • Anade Visitas_Totales y Likes_Totales")
-    print("   • Maneja valores NA correctamente")
+    print("   • ARREGLO CRITICO: Manejo correcto de DataFrame vs tupla")
     print("   • Primera vez: Crea historico completo")
     print("   • Siguientes: Anade columnas por fecha")
     print()
@@ -789,7 +712,7 @@ def main():
     exito = analizador.ejecutar()
     
     if exito:
-        print("\nPROCESO COMPLETADO EXITOSAMENTE V8.1")
+        print("\nPROCESO COMPLETADO EXITOSAMENTE V8.2")
         print("FORMATO DEL HISTORICO:")
         print("   • Columnas basicas: ID_Unico_Real, Cuenta, Titulo, Precio, etc.")
         print("   • Columnas totales: Visitas_Totales, Likes_Totales")
@@ -798,11 +721,12 @@ def main():
         print("   • ORDENACION: Activas arriba (por likes), vendidas abajo")
         print("   • ID UNICO: URL + cuenta + titulo + km (SIN PRECIO)")
         
-        print("\nCORRECCIONES V8.1:")
-        print("   • Lee hojas SCR (no Datos_)")
-        print("   • Maneja valores NA sin errores")
-        print("   • NO borra historico existente")
-        print("   • Convierte tipos antes de subir")
+        print("\nPARA LA SIGUIENTE EJECUCION:")
+        print("   1. El scraper se ejecutara automaticamente")
+        print("   2. Este analizador se ejecutara automaticamente despues")
+        print("   3. Se anadiran automaticamente las nuevas columnas")
+        print("   URL siempre usado como identificador unico!")
+        print("   Hojas: Data_Historico (principal)")
         
         return True
     else:
