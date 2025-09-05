@@ -1,0 +1,42 @@
+PROPRIETARY SOFTWARE LICENSE
+
+Copyright (c) 2025 Carlos Peraza
+All rights reserved.
+
+DATA SCRAPER VEHICLE MARKET ANALYSIS SYSTEM
+Autonomous Data Extraction System for Second-Hand Vehicle Market Analysis
+
+1. Ownership
+This software and all associated documentation files (the "Software") are the exclusive intellectual property of Carlos Peraza.
+All rights not expressly granted in this document are reserved.
+
+2. License Grant
+MOTICK is hereby granted a non-exclusive, non-transferable, limited license to use the Software exclusively for the following purposes:
+- Market analysis of vehicles on Wallapop
+- Data extraction from second-hand vehicle dealers
+- Internal business intelligence and market research
+
+3. Restrictions
+The following actions are strictly prohibited without prior written consent from the copyright holder:
+- Public distribution, sharing, or redistribution of the Software
+- Modification or creation of derivative works
+- Reverse engineering, decompilation, or disassembly
+- Sublicensing or making the Software available to third parties
+- Use outside of MOTICK’s internal operations
+- Commercial redistribution, resale, or offering as a service
+
+4. Third-Party Use
+Any use of the Software by parties other than MOTICK is strictly prohibited unless expressly authorized in writing by Carlos Peraza.
+
+5. Disclaimer of Warranty
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+6. Governing Law
+This license shall be governed by and construed in accordance with the laws of Spain. Any disputes arising from or relating to this License shall be submitted to the exclusive jurisdiction of the competent courts of Madrid, Spain.
+
+7. GitHub Repository Notice
+The presence of this Software on GitHub is for collaboration, archival, and version control purposes only.
+It does not grant a license for public use, distribution, or open-source rights.
+
+Developed by Carlos Peraza
+Unauthorized use is prohibited.
