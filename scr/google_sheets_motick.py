@@ -1,6 +1,6 @@
 """
-Google Sheets Handler para Motick Scraper - ARREGLO DEFINITIVO CORREGIDO
-Corrige el problema de lectura de hojas SCR
+Google Sheets Handler para Motick Scraper - CODIGO COMPLETO CORREGIDO
+ARREGLO DEFINITIVO: Elimina error NAType not JSON serializable
 """
 
 import gspread
@@ -16,7 +16,7 @@ from datetime import datetime
 class GoogleSheetsMotick:
     def __init__(self, credentials_json_string=None, sheet_id=None, credentials_file=None):
         """
-        Inicializar handler con credenciales - IGUAL AL QUE FUNCIONA
+        Inicializar handler con credenciales
         """
         if credentials_json_string:
             # Para GitHub Actions - desde string JSON
@@ -46,7 +46,7 @@ class GoogleSheetsMotick:
         print("CONEXION: Google Sheets establecida correctamente")
         
     def test_connection(self):
-        """Probar conexion - COPIA EXACTA DEL QUE FUNCIONA"""
+        """Probar conexion a Google Sheets"""
         try:
             spreadsheet = self.client.open_by_key(self.sheet_id)
             print(f"CONEXION: Exitosa al Sheet: {spreadsheet.title}")
@@ -55,7 +55,6 @@ class GoogleSheetsMotick:
         except Exception as e:
             print(f"ERROR CONEXION: {str(e)}")
             print(f"SHEET_ID PROBLEMATICO: {self.sheet_id}")
-            print("VERIFICAR: Que el ID corresponda a un GOOGLE SHEET NATIVO, no a un Excel")
             return False
     
     def crear_id_unico_real(self, fila):
@@ -81,9 +80,40 @@ class GoogleSheetsMotick:
             url_safe = str(fila.get('URL', str(time.time())))
             return hashlib.md5(f"{url_safe}_{time.time()}".encode()).hexdigest()[:12]
     
+    def limpiar_dataframe_para_sheets(self, df):
+        """
+        FUNCION CRITICA: Limpia DataFrame para Google Sheets
+        Elimina pd.NA, NaN, None y los convierte a strings vacios
+        """
+        try:
+            # Crear copia para no modificar original
+            df_clean = df.copy()
+            
+            # Reemplazar pd.NA y NaN con strings vacios
+            df_clean = df_clean.fillna('')
+            
+            # Reemplazar cualquier pd.NA que quede
+            df_clean = df_clean.replace({pd.NA: ''})
+            
+            # Convertir None a strings vacios
+            df_clean = df_clean.replace({None: ''})
+            
+            # Asegurar que todo es serializable
+            for col in df_clean.columns:
+                df_clean[col] = df_clean[col].astype(str)
+                # Reemplazar 'nan', '<NA>', 'None' strings
+                df_clean[col] = df_clean[col].replace({'nan': '', '<NA>': '', 'None': ''})
+            
+            print(f"LIMPIEZA: DataFrame limpiado para Google Sheets - {len(df_clean)} filas")
+            return df_clean
+            
+        except Exception as e:
+            print(f"ERROR EN LIMPIEZA: {str(e)}")
+            return df
+    
     def subir_datos_scraper(self, df_motos, fecha_extraccion=None):
         """
-        Sube datos - BASADO EN EL CODIGO QUE FUNCIONA
+        Sube datos del scraper con limpieza de NA values
         """
         try:
             if fecha_extraccion is None:
@@ -92,17 +122,20 @@ class GoogleSheetsMotick:
             # Crear ID_Unico_Real para cada moto
             df_motos['ID_Unico_Real'] = df_motos.apply(self.crear_id_unico_real, axis=1)
             
-            # Nombre de hoja basado en fecha - MISMO PATRON QUE EL QUE FUNCIONA
+            # LIMPIAR DATAFRAME ANTES DE SUBIR
+            df_motos_clean = self.limpiar_dataframe_para_sheets(df_motos)
+            
+            # Nombre de hoja basado en fecha
             fecha_para_hoja = datetime.strptime(fecha_extraccion, "%d/%m/%Y").strftime("%d/%m/%y")
             sheet_name = f"SCR {fecha_para_hoja}"
             
             print(f"SUBIENDO: Datos a hoja {sheet_name}")
             
-            # Abrir Google Sheet - IGUAL AL QUE FUNCIONA
+            # Abrir Google Sheet
             spreadsheet = self.client.open_by_key(self.sheet_id)
             print(f"ACCEDIENDO: Sheet {spreadsheet.title}")
             
-            # Crear o limpiar worksheet - MISMO PATRON
+            # Crear o limpiar worksheet
             try:
                 worksheet = spreadsheet.worksheet(sheet_name)
                 worksheet.clear()
@@ -110,32 +143,34 @@ class GoogleSheetsMotick:
             except gspread.WorksheetNotFound:
                 worksheet = spreadsheet.add_worksheet(
                     title=sheet_name,
-                    rows=len(df_motos) + 10,
-                    cols=len(df_motos.columns) + 2
+                    rows=len(df_motos_clean) + 10,
+                    cols=len(df_motos_clean.columns) + 2
                 )
                 print(f"CREANDO: Nueva hoja {sheet_name}")
             
-            # Preparar datos para subir - IDENTICO AL QUE FUNCIONA
-            headers = df_motos.columns.values.tolist()
-            data_rows = df_motos.values.tolist()
+            # Preparar datos para subir (YA LIMPIADOS)
+            headers = df_motos_clean.columns.values.tolist()
+            data_rows = df_motos_clean.values.tolist()
             all_data = [headers] + data_rows
             
             # Subir datos
             worksheet.update(all_data)
             
             print(f"SUBIDA EXITOSA: {sheet_name}")
-            print(f"DATOS: {len(df_motos)} filas x {len(df_motos.columns)} columnas")
+            print(f"DATOS: {len(df_motos_clean)} filas x {len(df_motos_clean.columns)} columnas")
             print(f"URL: https://docs.google.com/spreadsheets/d/{self.sheet_id}")
             
             return True, sheet_name
             
         except Exception as e:
             print(f"ERROR SUBIDA: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False, None
     
     def leer_datos_historico(self, sheet_name="Data_Historico"):
         """
-        Lee datos del historico
+        Lee datos del historico desde Google Sheets
         """
         try:
             spreadsheet = self.client.open_by_key(self.sheet_id)
@@ -178,7 +213,7 @@ class GoogleSheetsMotick:
     
     def leer_datos_scraper_reciente(self):
         """
-        CORRECCION CRITICA: Lee hojas SCR correctamente
+        Lee los datos mas recientes del scraper desde hojas SCR
         """
         try:
             spreadsheet = self.client.open_by_key(self.sheet_id)
@@ -186,13 +221,13 @@ class GoogleSheetsMotick:
             
             print(f"DEBUG: Hojas disponibles: {hojas_disponibles}")
             
-            # Buscar hojas SCR con mejor manejo de errores
+            # Buscar hojas SCR con manejo robusto de errores
             hojas_scr = []
             for hoja in hojas_disponibles:
                 if hoja.startswith('SCR '):
                     print(f"DEBUG: Procesando hoja: {hoja}")
                     try:
-                        fecha_parte = hoja[4:]  # "03/09/25"
+                        fecha_parte = hoja[4:]  # "05/09/25"
                         print(f"DEBUG: Fecha extraida: '{fecha_parte}'")
                         
                         partes = fecha_parte.split('/')
@@ -272,17 +307,19 @@ class GoogleSheetsMotick:
     
     def guardar_historico_con_hojas_originales(self, df_historico, fecha_procesamiento):
         """
-        VERSION COMPLETA: Guarda en 3 hojas como requiere el usuario
-        1. Data_Historico (todas las motos ordenadas)
-        2. Motos_Activas (solo activas por Likes_Totales DESC)
-        3. Motos_Vendidas (solo vendidas por Fecha_Venta DESC)
+        CORREGIDO: Guarda historico con limpieza completa de NA values
+        Guarda en 3 hojas: Data_Historico, Motos_Activas, Motos_Vendidas
         """
         try:
             spreadsheet = self.client.open_by_key(self.sheet_id)
             
+            print(f"INICIANDO GUARDADO: {len(df_historico)} motos total")
+            
             # ===============================================
             # 1. HOJA PRINCIPAL: Data_Historico
             # ===============================================
+            print("PROCESANDO: Hoja principal Data_Historico")
+            
             try:
                 worksheet_main = spreadsheet.worksheet("Data_Historico")
                 worksheet_main.clear()
@@ -295,20 +332,28 @@ class GoogleSheetsMotick:
                 )
                 print(f"CREANDO: Nueva hoja Data_Historico")
             
-            # Ordenar historico completo: Activas por Likes_Totales, Vendidas por Fecha_Venta
+            # Ordenar historico completo
             df_ordenado = self.ordenar_historico_completo(df_historico)
             
-            # Subir datos principales
-            headers = df_ordenado.columns.values.tolist()
-            data_rows = df_ordenado.values.tolist()
+            # LIMPIEZA CRITICA: Eliminar NA values antes de subir
+            print("LIMPIANDO: Datos para Data_Historico")
+            df_ordenado_clean = self.limpiar_dataframe_para_sheets(df_ordenado)
+            
+            # Preparar y subir datos principales
+            headers = df_ordenado_clean.columns.values.tolist()
+            data_rows = df_ordenado_clean.values.tolist()
             all_data = [headers] + data_rows
+            
+            print(f"SUBIENDO: {len(all_data)} filas a Data_Historico")
             worksheet_main.update(all_data)
             
             print(f"EXITO: Data_Historico actualizada con {len(df_ordenado)} motos")
             
             # ===============================================
-            # 2. HOJA MOTOS_ACTIVAS (solo activas por Likes_Totales DESC)
+            # 2. HOJA MOTOS_ACTIVAS (solo activas)
             # ===============================================
+            print("PROCESANDO: Hoja Motos_Activas")
+            
             motos_activas = df_historico[df_historico['Estado'] == 'activa'].copy()
             
             if not motos_activas.empty:
@@ -328,10 +373,16 @@ class GoogleSheetsMotick:
                     )
                     print(f"CREANDO: Nueva hoja Motos_Activas")
                 
-                # Subir motos activas
-                headers_activas = motos_activas.columns.values.tolist()
-                data_activas = motos_activas.values.tolist()
+                # LIMPIEZA CRITICA: Eliminar NA values
+                print("LIMPIANDO: Datos para Motos_Activas")
+                motos_activas_clean = self.limpiar_dataframe_para_sheets(motos_activas)
+                
+                # Preparar y subir motos activas
+                headers_activas = motos_activas_clean.columns.values.tolist()
+                data_activas = motos_activas_clean.values.tolist()
                 activas_data = [headers_activas] + data_activas
+                
+                print(f"SUBIENDO: {len(activas_data)} filas a Motos_Activas")
                 ws_activas.update(activas_data)
                 
                 print(f"EXITO: Motos_Activas actualizada con {len(motos_activas)} motos")
@@ -339,8 +390,10 @@ class GoogleSheetsMotick:
                 print("AVISO: No hay motos activas")
             
             # ===============================================
-            # 3. HOJA MOTOS_VENDIDAS (solo vendidas por Fecha_Venta DESC)
+            # 3. HOJA MOTOS_VENDIDAS (solo vendidas)
             # ===============================================
+            print("PROCESANDO: Hoja Motos_Vendidas")
+            
             motos_vendidas = df_historico[df_historico['Estado'] == 'vendida'].copy()
             
             if not motos_vendidas.empty:
@@ -360,17 +413,25 @@ class GoogleSheetsMotick:
                     )
                     print(f"CREANDO: Nueva hoja Motos_Vendidas")
                 
-                # Subir motos vendidas
-                headers_vendidas = motos_vendidas.columns.values.tolist()
-                data_vendidas = motos_vendidas.values.tolist()
+                # LIMPIEZA CRITICA: Eliminar NA values
+                print("LIMPIANDO: Datos para Motos_Vendidas")
+                motos_vendidas_clean = self.limpiar_dataframe_para_sheets(motos_vendidas)
+                
+                # Preparar y subir motos vendidas
+                headers_vendidas = motos_vendidas_clean.columns.values.tolist()
+                data_vendidas = motos_vendidas_clean.values.tolist()
                 vendidas_data = [headers_vendidas] + data_vendidas
+                
+                print(f"SUBIENDO: {len(vendidas_data)} filas a Motos_Vendidas")
                 ws_vendidas.update(vendidas_data)
                 
                 print(f"EXITO: Motos_Vendidas actualizada con {len(motos_vendidas)} motos")
             else:
                 print("AVISO: No hay motos vendidas")
             
+            print(f"GUARDADO COMPLETO EXITOSO")
             print(f"DATOS FINALES: {len(df_historico)} filas x {len(df_historico.columns)} columnas")
+            print(f"HOJAS ACTUALIZADAS: Data_Historico, Motos_Activas, Motos_Vendidas")
             print(f"URL: https://docs.google.com/spreadsheets/d/{self.sheet_id}")
             
             return True
@@ -390,7 +451,7 @@ class GoogleSheetsMotick:
             df_activas = df_historico[df_historico['Estado'] == 'activa'].copy()
             df_vendidas = df_historico[df_historico['Estado'] == 'vendida'].copy()
             
-            # Ordenar activas por Likes_Totales descendente (NO por visitas)
+            # Ordenar activas por Likes_Totales descendente
             if not df_activas.empty and 'Likes_Totales' in df_activas.columns:
                 df_activas = df_activas.sort_values('Likes_Totales', ascending=False, na_position='last')
                 print(f"ORDENACION: {len(df_activas)} activas ordenadas por Likes_Totales DESC")
@@ -410,7 +471,7 @@ class GoogleSheetsMotick:
             return df_historico
 
 def test_google_sheets_motick():
-    """Funcion de prueba IGUAL A LA QUE FUNCIONA"""
+    """Funcion de prueba para verificar conexion"""
     print("PROBANDO CONEXION A GOOGLE SHEETS MOTICK")
     print("=" * 50)
     
