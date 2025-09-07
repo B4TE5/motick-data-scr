@@ -443,32 +443,46 @@ class GoogleSheetsMotick:
             return False
     
     def ordenar_historico_completo(self, df_historico):
-        """
-        Ordena el historico: activas por Likes_Totales DESC, vendidas por Fecha_Venta DESC
-        """
-        try:
-            # Separar activas y vendidas
-            df_activas = df_historico[df_historico['Estado'] == 'activa'].copy()
-            df_vendidas = df_historico[df_historico['Estado'] == 'vendida'].copy()
-            
-            # Ordenar activas por Likes_Totales descendente
-            if not df_activas.empty and 'Likes_Totales' in df_activas.columns:
-                df_activas = df_activas.sort_values('Likes_Totales', ascending=False, na_position='last')
-                print(f"ORDENACION: {len(df_activas)} activas ordenadas por Likes_Totales DESC")
-            
-            # Ordenar vendidas por Fecha_Venta descendente
-            if not df_vendidas.empty and 'Fecha_Venta' in df_vendidas.columns:
-                df_vendidas = df_vendidas.sort_values('Fecha_Venta', ascending=False, na_position='last')
-                print(f"ORDENACION: {len(df_vendidas)} vendidas ordenadas por Fecha_Venta DESC")
-            
-            # Concatenar: activas arriba, vendidas abajo
-            df_ordenado = pd.concat([df_activas, df_vendidas], ignore_index=True)
-            
-            return df_ordenado
-            
-        except Exception as e:
-            print(f"ERROR ORDENANDO: {str(e)}")
-            return df_historico
+            """
+            Ordena el historico: 
+            - ACTIVAS por Kilometraje DESC, luego Titulo ASC
+            - VENDIDAS por Fecha_Venta DESC (sin cambios)
+            """
+            try:
+                # Separar activas y vendidas
+                df_activas = df_historico[df_historico['Estado'] == 'activa'].copy()
+                df_vendidas = df_historico[df_historico['Estado'] == 'vendida'].copy()
+                
+                # NUEVO: Ordenar activas por Kilometraje DESC, luego Titulo ASC
+                if not df_activas.empty:
+                    # Convertir Kilometraje a numerico para ordenar correctamente
+                    df_activas['KM_Numerico'] = df_activas['Kilometraje'].str.extract(r'(\d+)').fillna(0).astype(int)
+                    
+                    # Ordenar por KM (mas a menos) y luego por Titulo (A-Z)
+                    df_activas = df_activas.sort_values(
+                        ['KM_Numerico', 'Titulo'], 
+                        ascending=[False, True], 
+                        na_position='last'
+                    )
+                    
+                    # Eliminar columna temporal
+                    df_activas = df_activas.drop('KM_Numerico', axis=1)
+                    
+                    print(f"ORDENACION: {len(df_activas)} activas ordenadas por KM DESC, Titulo ASC")
+                
+                # Ordenar vendidas por Fecha_Venta descendente (SIN CAMBIOS)
+                if not df_vendidas.empty and 'Fecha_Venta' in df_vendidas.columns:
+                    df_vendidas = df_vendidas.sort_values('Fecha_Venta', ascending=False, na_position='last')
+                    print(f"ORDENACION: {len(df_vendidas)} vendidas ordenadas por Fecha_Venta DESC")
+                
+                # Concatenar: activas arriba, vendidas abajo
+                df_ordenado = pd.concat([df_activas, df_vendidas], ignore_index=True)
+                
+                return df_ordenado
+                
+            except Exception as e:
+                print(f"ERROR ORDENANDO: {str(e)}")
+                return df_historico
 
 def test_google_sheets_motick():
     """Funcion de prueba para verificar conexion"""
