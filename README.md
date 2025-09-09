@@ -11,9 +11,6 @@
 [![Google Sheets API](https://img.shields.io/badge/Google-Workspace-4285F4)](https://developers.google.com/workspace/sheets/api/guides/concepts?hl=es-419)
 [![License](https://img.shields.io/badge/License-Private-red)](LICENSE)
 
-## Excel de Datos Diario
-
-🔗 [Google Sheets Link](https://docs.google.com/spreadsheets/d/1Pxz653iln_SVgAnf5RMOX2gh2FgtHYBVbDn7_hLrJMM/edit?gid=1606413032#gid=1606413032)
 
 </div>
 
