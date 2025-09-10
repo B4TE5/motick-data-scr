@@ -1,7 +1,7 @@
 
 <div align="center">
 
-# 🏍️ Motick Moto Scraper 🏍️
+# 🏍️ MOTICK DATA SCRAPER 🏍️
 
 **Sistema automatizado de scraping y análisis de mercado de motos en Wallapop**
 
@@ -36,35 +36,6 @@ Los datos extraídos se organizan automáticamente en un **Google Sheet comparti
 
 ---
 
-## 🧠 Tecnologías Usadas
-
-- **Python 3.11**  
-  Lenguaje principal del proyecto
-
-- **Selenium (Chrome Headless)**  
-  Automatización de la navegación por Wallapop
-
-- **Google Sheets API**  
-  Lectura y escritura de datos en hojas de cálculo compartidas
-
-- **OpenPyXL / Pandas**  
-  Procesamiento y consolidación de históricos
-
----
-
-## 📁 Estructura del Repositorio
-
-```
-.
-├── SCR_DATA_MOTICK.py         # Script principal de scraping
-├── ANALISIS_MOTICK.py         # Analizador de histórico y evolución
-├── MIGRADOR_EXCELS.py         # Fusión de excels antiguos en histórico
-├── historico_motick.xlsx      # Plantilla/archivo con histórico actualizado
-└── README.md
-```
-
----
-
 ## 📊 Estructura de Datos
 
 | Campo               | Descripción                                       |
@@ -78,30 +49,6 @@ Los datos extraídos se organizan automáticamente en un **Google Sheet comparti
 | Nº Likes            | Número acumulado de "me gusta"                    |
 | URL                 | Enlace directo al anuncio                         |
 | Fecha Extracción    | Fecha y hora de la última recolección de datos    |
-
----
-
-## ⚙️ Configuración Rápida
-
-1. **Clona el repositorio**
-   ```bash
-   git clone https://github.com/tu-usuario/motick-moto-scraper.git
-   cd motick-moto-scraper
-   ```
-
-2. **Configura tus credenciales**
-   - Añade tu archivo `credentials.json` de la cuenta de servicio de Google
-   - Asegúrate de compartir el Google Sheet con el correo de la cuenta de servicio
-
-3. **Ejecuta el scraper**
-   ```bash
-   python SCR_DATA_MOTICK.py
-   ```
-
-4. **Lanza el análisis histórico**
-   ```bash
-   python ANALISIS_MOTICK.py
-   ```
 
 ---
 
