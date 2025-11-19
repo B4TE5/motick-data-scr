@@ -17,7 +17,7 @@ on:
 jobs:
   scrape-motick:
     runs-on: ubuntu-latest
-    timeout-minutes: 480  # 8 horas maximo
+    timeout-minutes: 350  # 5 horas 50 minutos maximo
     
     steps:
     - name: Checkout Repository
@@ -41,12 +41,12 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
-    - name: Install Chrome and ChromeDriver
+    - name: Install Chrome (latest stable)
       run: |
         # Actualizar sistema
         sudo apt-get update
         
-        # Instalar Chrome
+        # Instalar Chrome stable
         wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
         sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
         sudo apt-get update
@@ -54,6 +54,9 @@ jobs:
         
         # Verificar version Chrome
         google-chrome --version
+        
+        # IMPORTANTE: NO instalar chromedriver manualmente
+        # webdriver-manager lo hará automáticamente
         
     - name: Configure Chrome for Headless
       run: |
@@ -70,7 +73,10 @@ jobs:
         sudo apt-get install -y xvfb
         
         # Iniciar virtual display
-        Xvfb :99 -screen 0 1920x1080x24 &
+        Xvfb :99 -screen 0 1920x1080x24 > /dev/null 2>&1 &
+        
+        # Esperar a que inicie
+        sleep 2
         
     - name: Run Motick Scraper
       env:
@@ -103,6 +109,9 @@ jobs:
     - name: Notify Results
       if: always()
       run: |
+        echo "==============================================="
         echo "MOTICK SCRAPER: Ejecucion completada"
+        echo "==============================================="
         echo "DATOS: Revisar Google Sheets para datos actualizados"
         echo "BACKUP: Artefactos subidos como respaldo"
+        echo "==============================================="
