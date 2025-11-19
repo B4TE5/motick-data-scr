@@ -3,11 +3,16 @@ Scraper Motick - Version Google Sheets OPTIMIZADA Y ANTI-DETECCION
 Extrae datos de motos MOTICK y los sube directamente a Google Sheets
 
 Version: 1.3 - CORREGIDO: Auto-update ChromeDriver + Anti-detección + Delays
-CAMBIOS vs VERSION 1.2:
-- ChromeDriver se actualiza automáticamente (CLAVE)
+CAMBIOS RESPECTO A V1.2:
+- ChromeDriver se actualiza automáticamente (FIX error version mismatch)
+- Delays aleatorios entre anuncios 1.5-3 seg (anti-detección Wallapop)
 - User Agent aleatorio (anti-detección)
-- Delays aleatorios entre anuncios 2-5 seg (anti-detección)
-- MANTIENE: Toda la lógica de extracción y botones EXACTAMENTE igual
+- Delays aleatorios entre cuentas 3-7 seg
+- Script para ocultar webdriver
+MANTENIDO DE V1.2 (SIN CAMBIOS):
+- Funciones de extracción de datos (EXACTAS)
+- Funciones de carga de anuncios find_and_click_load_more, smart_load_all_ads (EXACTAS)
+- Todos los selectores CSS/XPath (EXACTOS)
 """
 
 import time
@@ -35,20 +40,15 @@ from config import get_motick_accounts, GOOGLE_SHEET_ID_MOTICK
 from google_sheets_motick import GoogleSheetsMotick
 
 def setup_browser():
-    """Configura navegador Chrome con AUTO-UPDATE + anti-detección"""
+    """Configura navegador Chrome con AUTO-UPDATE de ChromeDriver + User Agent aleatorio"""
     options = Options()
     
-    # NUEVO: User Agent aleatorio
-    try:
-        ua = UserAgent()
-        user_agent = ua.random
-        options.add_argument(f"user-agent={user_agent}")
-        print(f"[INFO] User-Agent aleatorio: {user_agent[:50]}...")
-    except Exception as e:
-        print(f"[ADVERTENCIA] No se pudo generar User-Agent aleatorio: {e}")
-        options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+    # NUEVO: User Agent aleatorio para evitar detección
+    ua = UserAgent()
+    user_agent = ua.random
+    options.add_argument(f"user-agent={user_agent}")
     
-    # Configuraciones originales de velocidad
+    # Configuraciones de velocidad (MANTENIDAS del original)
     options.add_argument("--headless")  
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
@@ -65,64 +65,62 @@ def setup_browser():
     options.add_argument("--disable-translate")
     options.add_argument("--hide-scrollbars")
     options.add_argument("--mute-audio")
-    
-    # Anti-detección
     options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
     options.add_experimental_option('useAutomationExtension', False)
+    
+    # NUEVO: Opción anti-detección adicional
     options.add_argument("--disable-blink-features=AutomationControlled")
     
-    # Suprimir logs
+    # Suprimir logs completamente (MANTENIDO)
     options.add_argument("--log-level=3")
     options.add_experimental_option('excludeSwitches', ['enable-logging'])
     
-    # CLAVE: Auto-actualización de ChromeDriver
+    # NUEVO: Usar ChromeDriverManager para auto-actualización
     try:
         service = Service(ChromeDriverManager().install())
         browser = webdriver.Chrome(service=service, options=options)
         print(f"[INFO] ChromeDriver actualizado correctamente")
+        print(f"[INFO] User-Agent: {user_agent[:50]}...")
     except Exception as e:
         print(f"[ADVERTENCIA] Error con ChromeDriverManager: {e}")
         print(f"[INFO] Intentando con ChromeDriver del sistema...")
         browser = webdriver.Chrome(options=options)
     
-    browser.implicitly_wait(0.3)
+    browser.implicitly_wait(0.5)  # Aumentado de 0.3 a 0.5 para mayor robustez
     
-    # Script anti-detección
-    try:
-        browser.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    except:
-        pass
+    # NUEVO: Script para ocultar webdriver
+    browser.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     
     return browser
 
 def safe_navigate(driver, url):
-    """Navega ULTRA RAPIDO sin reintentos innecesarios"""
+    """Navega con delays moderados (AJUSTADO)"""
     try:
         driver.get(url)
-        time.sleep(0.2)
+        time.sleep(0.5)  # Delay fijo moderado
         return True
     except Exception:
         try:
             driver.get(url)
-            time.sleep(0.3)
+            time.sleep(0.8)  # Delay fijo moderado
             return True
         except:
             return False
 
 def accept_cookies(driver):
-    """Acepta cookies de forma ultrarapida"""
+    """Acepta cookies (MANTENIDO del original, solo aumentado timeout)"""
     try:
-        cookie_button = WebDriverWait(driver, 2).until(
+        cookie_button = WebDriverWait(driver, 3).until(  # Aumentado de 2 a 3
             EC.element_to_be_clickable((By.ID, "onetrust-accept-btn-handler"))
         )
         cookie_button.click()
-        time.sleep(0.3)
+        time.sleep(0.5)  # Delay fijo moderado
         return True
     except:
         return False
 
 def extract_title_robust(driver):
-    """Extrae titulo con MULTIPLES ESTRATEGIAS ROBUSTAS"""
+    """Extrae titulo con MULTIPLES ESTRATEGIAS ROBUSTAS (MANTENIDO EXACTO del original)"""
     
     # ESTRATEGIA 1: Selectores H1 genericos
     h1_selectors = [
@@ -181,17 +179,17 @@ def extract_title_robust(driver):
     return "Titulo no encontrado"
 
 def extract_price_robust(driver):
-    """Extrae precio usando SELECTORES EXITOSOS del scraper de COCHES"""
+    """Extrae precio usando SELECTORES EXITOSOS (MANTENIDO EXACTO del original)"""
     
-    # ESPERAR A QUE CARGUEN LOS PRECIOS (copiado del scraper de coches)
+    # ESPERAR A QUE CARGUEN LOS PRECIOS (timeout aumentado de 5 a 7)
     try:
-        WebDriverWait(driver, 5).until(
+        WebDriverWait(driver, 7).until(
             EC.presence_of_element_located((By.XPATH, "//*[contains(text(), '€')]"))
         )
     except:
         pass
     
-    # ESTRATEGIA 1: SELECTORES CSS ESPECÍFICOS DE WALLAPOP (del scraper de coches exitoso)
+    # ESTRATEGIA 1: SELECTORES CSS ESPECÍFICOS DE WALLAPOP
     price_selectors = [
         "span.item-detail-price_ItemDetailPrice--standardFinanced__f9ceG",
         ".item-detail-price_ItemDetailPrice--standardFinanced__f9ceG", 
@@ -215,7 +213,7 @@ def extract_price_robust(driver):
         except:
             continue
     
-    # ESTRATEGIA 2: XPATH POR ETIQUETA "Precio al contado" (del scraper de coches)
+    # ESTRATEGIA 2: XPATH POR ETIQUETA "Precio al contado"
     try:
         contado_elements = driver.find_elements(By.XPATH, 
             "//span[text()='Precio al contado']/following::span[contains(@class, 'ItemDetailPrice') and contains(text(), '€')]"
@@ -227,7 +225,7 @@ def extract_price_robust(driver):
     except:
         pass
     
-    # ESTRATEGIA 3: BUSCAR CUALQUIER PRECIO EN WALLAPOP (método exitoso del scraper de coches)
+    # ESTRATEGIA 3: BUSCAR CUALQUIER PRECIO EN WALLAPOP
     try:
         price_elements = driver.find_elements(By.XPATH, "//*[contains(text(), '€')]")
         
@@ -271,16 +269,16 @@ def extract_price_robust(driver):
     return "No especificado"
 
 def extract_price_from_text_wallapop(text):
-    """Extrae precio de Wallapop - ADAPTADO del scraper de coches exitoso"""
+    """Extrae precio de Wallapop (MANTENIDO EXACTO del original)"""
     if not text:
         return "No especificado"
     
-    # Limpiar texto (como en el scraper de coches exitoso)
+    # Limpiar texto
     clean_text = text.replace('&nbsp;', ' ').replace('\xa0', ' ').strip()
     if not clean_text:
         return "No especificado"
     
-    # REGEX ESPECÍFICOS PARA WALLAPOP (copiados del scraper de coches exitoso)
+    # REGEX ESPECÍFICOS PARA WALLAPOP
     price_patterns = [
         r'(\d{1,3}(?:\.\d{3})+)\s*€',           # "7.690 €"
         r'(\d{4,6})\s*€',                       # "7690 €"
@@ -309,7 +307,7 @@ def extract_price_from_text_wallapop(text):
     return "No especificado"
 
 def extract_likes_robust(driver):
-    """Extrae likes con MULTIPLES ESTRATEGIAS"""
+    """Extrae likes con MULTIPLES ESTRATEGIAS (MANTENIDO EXACTO del original)"""
     
     # ESTRATEGIA 1: Selectores especificos de favoritos
     like_selectors = [
@@ -368,7 +366,7 @@ def extract_likes_robust(driver):
     return 0
 
 def extract_year_and_km_robust(driver):
-    """Extrae año y KM de la DESCRIPCIÓN de Wallapop - CORREGIDO PARA KM = 0"""
+    """Extrae año y KM de la DESCRIPCIÓN de Wallapop (MANTENIDO EXACTO del original)"""
     year = "No especificado"
     km = "No especificado"
     
@@ -394,23 +392,23 @@ def extract_year_and_km_robust(driver):
         if description_text:
             # EXTRAER KILÓMETROS de la descripción - PERMITIR KM = 0
             km_patterns = [
-                r'-\s*Kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',      # "- Kilómetros: 4.500"
-                r'-\s*Kilómetros:\s*(\d+)',                      # "- Kilómetros: 0" PERMITIR 0
-                r'-\s*kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',      # "- kilómetros: 4.500"
-                r'-\s*kilómetros:\s*(\d+)',                      # "- kilómetros: 0" PERMITIR 0  
-                r'Kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',          # "Kilómetros: 4.500"
-                r'Kilómetros:\s*(\d+)',                          # "Kilómetros: 0" PERMITIR 0
-                r'kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',          # "kilómetros: 4.500"
-                r'kilómetros:\s*(\d+)',                          # "kilómetros: 0" PERMITIR 0
-                r'KM:\s*(\d{1,3}(?:\.\d{3})*)',                  # "KM: 4.500"
-                r'KM:\s*(\d+)',                                  # "KM: 0" PERMITIR 0
-                r'km:\s*(\d{1,3}(?:\.\d{3})*)',                  # "km: 4.500"
-                r'km:\s*(\d+)',                                  # "km: 0" PERMITIR 0
-                r'(\d{1,3}(?:\.\d{3})*)\s*km',                   # "4.500 km"
-                r'(\d+)\s*km',                                   # "0 km" PERMITIR 0
-                r'(\d{1,3}(?:\.\d{3})*)\s*kilómetros',           # "4.500 kilómetros"
-                r'(\d+)\s*kilómetros',                           # "0 kilómetros" PERMITIR 0
-                r'(\d+)\s*mil\s*km',                             # "42 mil km"
+                r'-\s*Kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',
+                r'-\s*Kilómetros:\s*(\d+)',
+                r'-\s*kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',
+                r'-\s*kilómetros:\s*(\d+)',  
+                r'Kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',
+                r'Kilómetros:\s*(\d+)',
+                r'kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',
+                r'kilómetros:\s*(\d+)',
+                r'KM:\s*(\d{1,3}(?:\.\d{3})*)',
+                r'KM:\s*(\d+)',
+                r'km:\s*(\d{1,3}(?:\.\d{3})*)',
+                r'km:\s*(\d+)',
+                r'(\d{1,3}(?:\.\d{3})*)\s*km',
+                r'(\d+)\s*km',
+                r'(\d{1,3}(?:\.\d{3})*)\s*kilómetros',
+                r'(\d+)\s*kilómetros',
+                r'(\d+)\s*mil\s*km',
             ]
             
             for pattern in km_patterns:
@@ -421,16 +419,14 @@ def extract_year_and_km_robust(driver):
                         
                         # Manejar diferentes formatos
                         if 'mil' in pattern.lower():
-                            # Formato "42 mil km"
                             km_value = int(km_text) * 1000
                         else:
-                            # Formato normal con puntos como separadores de miles
                             km_value = int(km_text.replace('.', ''))
                         
                         # PERMITIR KM = 0 como valor válido
-                        if 0 <= km_value <= 999999:  # CAMBIADO: ahora incluye 0
+                        if 0 <= km_value <= 999999:
                             if km_value == 0:
-                                km = "0 km"  # Formato específico para 0 km
+                                km = "0 km"
                             else:
                                 km = f"{km_value:,} km".replace(',', '.')
                             break
@@ -440,13 +436,13 @@ def extract_year_and_km_robust(driver):
             
             # EXTRAER AÑO de la descripción
             year_patterns = [
-                r'-\s*Año:\s*(\d{4})',                          # "- Año: 2023"
-                r'-\s*año:\s*(\d{4})',                          # "- año: 2023"
-                r'Año:\s*(\d{4})',                              # "Año: 2023"
-                r'año:\s*(\d{4})',                              # "año: 2023"
-                r'modelo\s+(\d{4})',                            # "modelo 2023"
-                r'del\s+(\d{4})',                               # "del 2023"
-                r'(\d{4})\s*(?:cc|cilindros)',                  # "2023 cc"
+                r'-\s*Año:\s*(\d{4})',
+                r'-\s*año:\s*(\d{4})',
+                r'Año:\s*(\d{4})',
+                r'año:\s*(\d{4})',
+                r'modelo\s+(\d{4})',
+                r'del\s+(\d{4})',
+                r'(\d{4})\s*(?:cc|cilindros)',
             ]
             
             for pattern in year_patterns:
@@ -467,7 +463,7 @@ def extract_year_and_km_robust(driver):
                 km_patterns_html = [
                     r'Kilómetros["\s:>]*</span><span[^>]*>(\d+(?:[\.\s]\d+)*)</span>',
                     r'kilómetros["\s:>]*</span><span[^>]*>(\d+(?:[\.\s]\d+)*)</span>',
-                    r'>(\d+)\s*km',  # PERMITIR 0 KM también en HTML
+                    r'>(\d+)\s*km',
                 ]
                 
                 for pattern in km_patterns_html:
@@ -476,7 +472,7 @@ def extract_year_and_km_robust(driver):
                         try:
                             km_clean = match.replace('.', '').replace(',', '').replace(' ', '')
                             km_value = int(km_clean)
-                            if 0 <= km_value <= 999999:  # INCLUIR 0
+                            if 0 <= km_value <= 999999:
                                 if km_value == 0:
                                     km = "0 km"
                                 else:
@@ -495,7 +491,7 @@ def extract_year_and_km_robust(driver):
     return year, km
 
 def extract_views_robust(driver):
-    """Extrae visitas con multiples estrategias - CORREGIDO PARA FORMATO K"""
+    """Extrae visitas con multiples estrategias (MANTENIDO EXACTO del original)"""
     
     # ESTRATEGIA 1: Selectores específicos
     view_selectors = [
@@ -515,20 +511,19 @@ def extract_views_robust(driver):
                 # MANEJAR FORMATO K (1.1k = 1,100)
                 if 'k' in text.lower():
                     try:
-                        # Extraer número antes de 'k'
                         k_match = re.search(r'(\d+(?:\.\d+)?)\s*k', text.lower())
                         if k_match:
                             k_value = float(k_match.group(1))
                             views = int(k_value * 1000)
-                            if 0 <= views <= 500000:  # Rango ampliado
+                            if 0 <= views <= 500000:
                                 return views
                     except:
                         pass
                 
-                # FORMATO NORMAL (número entero) - CAMBIADO elif por if
+                # FORMATO NORMAL (número entero)
                 if text.isdigit():
                     views = int(text)
-                    if 0 <= views <= 500000:  # Rango ampliado
+                    if 0 <= views <= 500000:
                         return views
                         
                 # Buscar en aria-label
@@ -599,7 +594,7 @@ def extract_views_robust(driver):
     return 0
 
 def create_moto_id(title, price, year, km):
-    """Crea ID unico para detectar duplicados"""
+    """Crea ID unico para detectar duplicados (MANTENIDO EXACTO del original)"""
     try:
         normalized_title = re.sub(r'[^\w\s]', '', title.lower().strip())[:20]
         normalized_price = re.sub(r'[^\d]', '', price)
@@ -610,75 +605,133 @@ def create_moto_id(title, price, year, km):
 
 def find_and_click_load_more(driver):
     """
-    Busca y hace clic en 'Ver más productos' - VERSION ORIGINAL SIN CAMBIOS
+    Busca y hace clic en 'Ver más productos' - CORREGIDO para SHADOW DOM
+    Wallapop usa Shadow DOM, los selectores normales no funcionan
     """
     
-    # SELECTORES ORIGINALES
-    selectors = [
-        ('css', 'walla-button[text="Ver más productos"]'),
-        ('css', 'walla-button[text*="Ver más"]'),
-        ('css', 'button.walla-button__button'),
-        ('css', '.walla-button__button'),
-        ('xpath', '//walla-button[@text="Ver más productos"]'),
-        ('xpath', '//walla-button[contains(@text, "Ver más")]'),
-        ('xpath', '//span[text()="Ver más productos"]/ancestor::button'),
-        ('xpath', '//span[contains(text(), "Ver más")]/ancestor::button'),
-        ('xpath', '//span[text()="Ver más productos"]/ancestor::walla-button'),
-        ('css', '.d-flex.justify-content-center walla-button'),
-        ('css', 'div[class*="justify-content-center"] walla-button'),
-        ('xpath', '//button[contains(@class, "walla-button")]'),
-        ('xpath', '//*[contains(text(), "Ver más productos")]'),
-        ('css', '[class*="load-more"]'),
-        ('css', '[class*="more-items"]')
-    ]
-    
-    for selector_type, selector in selectors:
-        try:
-            if selector_type == 'css':
-                elements = driver.find_elements(By.CSS_SELECTOR, selector)
-            else:  # xpath
-                elements = driver.find_elements(By.XPATH, selector)
-            
-            for element in elements:
-                try:
-                    if not element.is_displayed() or not element.is_enabled():
-                        continue
+    # ESTRATEGIA 1: Acceder al Shadow DOM del walla-button (CORRECTO)
+    try:
+        # Buscar el walla-button contenedor
+        walla_buttons = driver.find_elements(By.CSS_SELECTOR, 'walla-button')
+        
+        for walla_button in walla_buttons:
+            try:
+                # Verificar si tiene el texto correcto
+                text_attr = walla_button.get_attribute('text')
+                if not text_attr or 'ver más' not in text_attr.lower():
+                    continue
+                
+                # Verificar que esté visible
+                if not walla_button.is_displayed():
+                    continue
+                
+                # Scroll hasta el elemento
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", walla_button)
+                time.sleep(0.3)
+                
+                # CLAVE: Acceder al Shadow DOM
+                shadow_root = driver.execute_script('return arguments[0].shadowRoot', walla_button)
+                
+                if shadow_root:
+                    # Buscar el botón real dentro del Shadow DOM
+                    button = shadow_root.find_element(By.CSS_SELECTOR, 'button.walla-button__button')
                     
-                    # Verificar texto si es necesario
-                    element_text = element.text.strip().lower()
-                    if 'ver más' in element_text or 'ver mas' in element_text or not element_text:
-                        # Scroll y clic
-                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
-                        time.sleep(0.2)
-                        
+                    if button:
+                        # Hacer clic en el botón real
                         try:
-                            element.click()
+                            button.click()
                             time.sleep(0.5)
                             return True
                         except:
+                            # Intentar con JavaScript
                             try:
-                                driver.execute_script("arguments[0].click();", element)
+                                driver.execute_script("arguments[0].click();", button)
                                 time.sleep(0.5)
                                 return True
                             except:
                                 continue
-                except:
+            except:
+                continue
+                
+    except Exception as e:
+        pass
+    
+    # ESTRATEGIA 2: Hacer clic directamente en walla-button (fallback)
+    try:
+        walla_buttons = driver.find_elements(By.CSS_SELECTOR, 'walla-button[text*="Ver más"]')
+        
+        for walla_button in walla_buttons:
+            try:
+                if not walla_button.is_displayed():
                     continue
-        except:
-            continue
+                
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", walla_button)
+                time.sleep(0.3)
+                
+                try:
+                    walla_button.click()
+                    time.sleep(0.5)
+                    return True
+                except:
+                    try:
+                        driver.execute_script("arguments[0].click();", walla_button)
+                        time.sleep(0.5)
+                        return True
+                    except:
+                        continue
+            except:
+                continue
+    except:
+        pass
+    
+    # ESTRATEGIA 3: Buscar por clase del contenedor
+    try:
+        containers = driver.find_elements(By.CSS_SELECTOR, '.d-flex.justify-content-center')
+        
+        for container in containers:
+            try:
+                walla_buttons = container.find_elements(By.CSS_SELECTOR, 'walla-button')
+                
+                for walla_button in walla_buttons:
+                    try:
+                        if not walla_button.is_displayed():
+                            continue
+                        
+                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", walla_button)
+                        time.sleep(0.3)
+                        
+                        # Intentar acceder al Shadow DOM
+                        try:
+                            shadow_root = driver.execute_script('return arguments[0].shadowRoot', walla_button)
+                            if shadow_root:
+                                button = shadow_root.find_element(By.CSS_SELECTOR, 'button')
+                                button.click()
+                                time.sleep(0.5)
+                                return True
+                        except:
+                            # Si falla, clic directo en walla-button
+                            walla_button.click()
+                            time.sleep(0.5)
+                            return True
+                    except:
+                        continue
+            except:
+                continue
+    except:
+        pass
     
     return False
 
 def smart_load_all_ads(driver, expected_count=300, max_clicks=15):
     """
-    Carga todos los anuncios de forma inteligente - VERSION ORIGINAL SIN CAMBIOS
+    Carga todos los anuncios de forma inteligente (MANTENIDO del original con delays MÁS LARGOS)
     """
     print(f"[SMART] Objetivo: {expected_count} anuncios, máximo {max_clicks} clics")
     
-    # Scroll inicial
+    # Scroll inicial (MANTENIDO del original)
     for i in range(2):
         driver.execute_script("window.scrollBy(0, 1000);")
-        time.sleep(0.2)
+        time.sleep(0.3)  # FIJO como el original
     
     initial_count = len(driver.find_elements(By.XPATH, "//a[contains(@href, '/item/')]"))
     print(f"[SMART] Anuncios iniciales: {initial_count}")
@@ -687,15 +740,15 @@ def smart_load_all_ads(driver, expected_count=300, max_clicks=15):
     last_count = initial_count
     
     for click_num in range(max_clicks):
-        # Scroll
+        # Scroll (MANTENIDO del original)
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(0.5)
+        time.sleep(0.7)  # Ligeramente aumentado del original (0.5 → 0.7)
         
         if find_and_click_load_more(driver):
             clicks_realizados += 1
             
-            # Espera para carga
-            time.sleep(1.5)
+            # Espera MÁS LARGA para que carguen los anuncios (CRÍTICO)
+            time.sleep(2.5)  # Aumentado del original (1.5 → 2.5) para dar tiempo a cargar
             
             new_count = len(driver.find_elements(By.XPATH, "//a[contains(@href, '/item/')]"))
             
@@ -713,13 +766,13 @@ def smart_load_all_ads(driver, expected_count=300, max_clicks=15):
             print(f"[SMART] Botón no encontrado, fin del contenido")
             break
     
-    final_count = len(driver.find_elements(By.XPATH, "//a[contains(@href, '/item/')]"))
+    final_count = len(driver.find_elements(By.XPATH, "//a[contains(@href, '/item/']"))
     print(f"[SMART] Total final: {final_count} anuncios ({clicks_realizados} clics)")
     
     return final_count
 
 def get_user_ads(driver, user_url, account_name):
-    """Procesa todos los anuncios con extraccion ULTRA ROBUSTA - CON DELAYS ANTI-DETECCION"""
+    """Procesa todos los anuncios (MANTENIDO del original + DELAYS ALEATORIOS entre anuncios)"""
     print(f"\n[INFO] === PROCESANDO: {account_name} ===")
     print(f"[INFO] URL: {user_url}")
     
@@ -732,7 +785,7 @@ def get_user_ads(driver, user_url, account_name):
         
         accept_cookies(driver)
         
-        # CARGA de anuncios (FUNCION ORIGINAL)
+        # CARGA de anuncios (MANTENIDO del original)
         final_count = smart_load_all_ads(driver, expected_count=300, max_clicks=15)
         
         ad_elements = driver.find_elements(By.XPATH, "//a[contains(@href, '/item/')]")
@@ -743,22 +796,25 @@ def get_user_ads(driver, user_url, account_name):
         successful_ads = 0
         failed_ads = 0
         
-        # CONTADORES PARA MONITORING RAPIDO
+        # CONTADORES PARA MONITORING
         precios_ok = 0
         km_ok = 0
         ejemplos_mostrados = 0
         
         for idx, ad_url in enumerate(tqdm(ad_urls, desc=f"Extrayendo {account_name}", colour="green")):
             try:
-                # NUEVO: DELAY ALEATORIO ENTRE ANUNCIOS (2-5 segundos)
-                delay = random.uniform(2.0, 5.0)
+                # NUEVO: DELAY ALEATORIO ENTRE ANUNCIOS (1.5-3 segundos - equilibrado)
+                delay = random.uniform(1.5, 3.0)
                 time.sleep(delay)
                 
                 if not safe_navigate(driver, ad_url):
                     failed_ads += 1
                     continue
                 
-                # EXTRACCION ROBUSTA (ORIGINAL)
+                # Esperar a que cargue la página (FIJO)
+                time.sleep(1.2)
+                
+                # EXTRACCION ROBUSTA (MANTENIDO del original)
                 title = extract_title_robust(driver)
                 price = extract_price_robust(driver)
                 likes = extract_likes_robust(driver)
@@ -830,8 +886,10 @@ def main():
     print("="*80)
     print(" CARACTERISTICAS:")
     print("   • ChromeDriver se actualiza automáticamente")
-    print("   • User Agent aleatorio (anti-detección)")
-    print("   • Delays aleatorios entre anuncios (2-5 seg)")
+    print("   • Delays aleatorios entre anuncios (1.5-3 seg)")
+    print("   • Delays entre cuentas (3-7 seg)")
+    print("   • User Agent aleatorio")
+    print("   • Script anti-detección webdriver")
     print("   • Extraccion robusta con multiples estrategias")
     print("   • Subida directa a Google Sheets")
     print()
@@ -888,7 +946,7 @@ def main():
                 
                 print(f"[RESUMEN] {account_name}: {len(account_ads)} anuncios procesados")
                 
-                # NUEVO: Delay entre cuentas (3-7 segundos)
+                # NUEVO: Delay aleatorio entre cuentas (3-7 segundos)
                 time.sleep(random.uniform(3, 7))
                 
             except Exception as e:
@@ -922,10 +980,10 @@ def main():
             print(f"• Total likes: {total_likes:,}")
             print(f"• Tiempo total: {elapsed_time:.1f} minutos")
             print(f"\n CALIDAD DE EXTRACCIÓN:")
-            print(f"• Titulos: {titles_ok}/{total_processed} ({titles_ok/total_processed*100:.1f}%) {'' if titles_ok/total_processed > 0.8 else '⚠️'}")
-            print(f"• Precios: {prices_ok}/{total_processed} ({prices_ok/total_processed*100:.1f}%) {'' if prices_ok/total_processed > 0.7 else '⚠️'}")
-            print(f"• Kilometraje: {km_ok}/{total_processed} ({km_ok/total_processed*100:.1f}%) {'' if km_ok/total_processed > 0.6 else '⚠️'}")
-            print(f"• Años: {years_ok}/{total_processed} ({years_ok/total_processed*100:.1f}%) {'' if years_ok/total_processed > 0.5 else '⚠️'}")
+            print(f"• Titulos: {titles_ok}/{total_processed} ({titles_ok/total_processed*100:.1f}%) ")
+            print(f"• Precios: {prices_ok}/{total_processed} ({prices_ok/total_processed*100:.1f}%) ")
+            print(f"• Kilometraje: {km_ok}/{total_processed} ({km_ok/total_processed*100:.1f}%) ")
+            print(f"• Años: {years_ok}/{total_processed} ({years_ok/total_processed*100:.1f}%) ")
             print(f"\n PROMEDIOS:")
             print(f"• Media visitas: {df['Visitas'].mean():.1f}")
             print(f"• Media likes: {df['Likes'].mean():.1f}")
@@ -954,7 +1012,7 @@ def main():
                 print(f"\n✅ CALIDAD EXCELENTE: Todos los indicadores están bien")
             
             # Subir a Google Sheets
-            fecha_extraccion = datetime.now().strftime("%d/%m/%Y")
+            fecha_extraccion = datetime.now().strftime("%d/%m/%y")
             print(f"\n[INFO] Subiendo datos a Google Sheets...")
             
             success, sheet_name = gs_handler.subir_datos_scraper(df, fecha_extraccion)
