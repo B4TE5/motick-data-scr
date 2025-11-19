@@ -10,3 +10,5 @@ python-dotenv==1.0.1
 webdriver-manager==4.0.2
 colorama==0.4.6
 numpy==1.26.4
+undetected-chromedriver==3.5.5
+fake-useragent==1.5.1
