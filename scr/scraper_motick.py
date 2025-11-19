@@ -1,10 +1,13 @@
 """
-Scraper Motick - Version Google Sheets OPTIMIZADA
+Scraper Motick - Version Google Sheets OPTIMIZADA Y ANTI-DETECCION
 Extrae datos de motos MOTICK y los sube directamente a Google Sheets
 
-Version: 1.2 - Automatizada para GitHub Actions - OPTIMIZADA PARA VELOCIDAD
-Basado en: SCR_DATA_MOTICK.py original
-OPTIMIZACIONES: Logs limpios + Mayor velocidad sin perder funcionalidad
+Version: 1.3 - CORREGIDO: Auto-update ChromeDriver + Anti-detección + Delays
+CAMBIOS CLAVE:
+- ChromeDriver se actualiza automáticamente
+- Delays aleatorios entre anuncios (2-5 segundos)
+- Rotación de User Agents
+- Timeouts más robustos
 """
 
 import time
@@ -12,14 +15,18 @@ import re
 import os
 import sys
 import pandas as pd
+import random
 from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from tqdm import tqdm
+from fake_useragent import UserAgent
+from webdriver_manager.chrome import ChromeDriverManager
 import hashlib
 
 # Importar modulos locales
@@ -28,10 +35,15 @@ from config import get_motick_accounts, GOOGLE_SHEET_ID_MOTICK
 from google_sheets_motick import GoogleSheetsMotick
 
 def setup_browser():
-    """Configura navegador Chrome ULTRA RAPIDO"""
+    """Configura navegador Chrome con AUTO-UPDATE de ChromeDriver"""
     options = Options()
     
-    # Configuraciones de maxima velocidad
+    # User Agent aleatorio para evitar detección
+    ua = UserAgent()
+    user_agent = ua.random
+    options.add_argument(f"user-agent={user_agent}")
+    
+    # Configuraciones de velocidad + anti-detección
     options.add_argument("--headless")  
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
@@ -48,40 +60,55 @@ def setup_browser():
     options.add_argument("--disable-translate")
     options.add_argument("--hide-scrollbars")
     options.add_argument("--mute-audio")
+    
+    # IMPORTANTE: Estas opciones ocultan que es un bot
     options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
     options.add_experimental_option('useAutomationExtension', False)
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+    options.add_argument("--disable-blink-features=AutomationControlled")
     
-    # Suprimir logs completamente
+    # Suprimir logs
     options.add_argument("--log-level=3")
-    options.add_experimental_option('excludeSwitches', ['enable-logging'])
     
-    browser = webdriver.Chrome(options=options)
-    browser.implicitly_wait(0.3)  # REDUCIDO de 0.5 a 0.3
+    # CLAVE: Usar ChromeDriverManager para auto-actualización
+    try:
+        service = Service(ChromeDriverManager().install())
+        browser = webdriver.Chrome(service=service, options=options)
+        print(f"[INFO] ChromeDriver actualizado correctamente")
+        print(f"[INFO] User-Agent: {user_agent[:50]}...")
+    except Exception as e:
+        print(f"[ADVERTENCIA] Error con ChromeDriverManager: {e}")
+        print(f"[INFO] Intentando con ChromeDriver del sistema...")
+        browser = webdriver.Chrome(options=options)
+    
+    browser.implicitly_wait(0.5)  # Aumentado de 0.3 a 0.5
+    
+    # Ejecutar script para ocultar webdriver
+    browser.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+    
     return browser
 
 def safe_navigate(driver, url):
-    """Navega ULTRA RAPIDO sin reintentos innecesarios"""
+    """Navega con manejo de errores robusto"""
     try:
         driver.get(url)
-        time.sleep(0.2)  # REDUCIDO de 0.3 a 0.2
+        time.sleep(random.uniform(0.5, 1.0))  # Delay aleatorio
         return True
     except Exception:
         try:
             driver.get(url)
-            time.sleep(0.3)  # REDUCIDO de 0.5 a 0.3
+            time.sleep(random.uniform(0.8, 1.5))
             return True
         except:
             return False
 
 def accept_cookies(driver):
-    """Acepta cookies de forma ultrarapida"""
+    """Acepta cookies con timeout más largo"""
     try:
-        cookie_button = WebDriverWait(driver, 2).until(  # REDUCIDO de 3 a 2
+        cookie_button = WebDriverWait(driver, 3).until(  # Aumentado de 2 a 3
             EC.element_to_be_clickable((By.ID, "onetrust-accept-btn-handler"))
         )
         cookie_button.click()
-        time.sleep(0.3)  # REDUCIDO de 0.5 a 0.3
+        time.sleep(random.uniform(0.5, 1.0))  # Delay aleatorio
         return True
     except:
         return False
@@ -148,15 +175,15 @@ def extract_title_robust(driver):
 def extract_price_robust(driver):
     """Extrae precio usando SELECTORES EXITOSOS del scraper de COCHES"""
     
-    # ESPERAR A QUE CARGUEN LOS PRECIOS (copiado del scraper de coches)
+    # ESPERAR A QUE CARGUEN LOS PRECIOS (con timeout más largo)
     try:
-        WebDriverWait(driver, 5).until(
+        WebDriverWait(driver, 7).until(  # Aumentado de 5 a 7
             EC.presence_of_element_located((By.XPATH, "//*[contains(text(), '€')]"))
         )
     except:
         pass
     
-    # ESTRATEGIA 1: SELECTORES CSS ESPECÍFICOS DE WALLAPOP (del scraper de coches exitoso)
+    # ESTRATEGIA 1: SELECTORES CSS ESPECÍFICOS DE WALLAPOP
     price_selectors = [
         "span.item-detail-price_ItemDetailPrice--standardFinanced__f9ceG",
         ".item-detail-price_ItemDetailPrice--standardFinanced__f9ceG", 
@@ -180,7 +207,7 @@ def extract_price_robust(driver):
         except:
             continue
     
-    # ESTRATEGIA 2: XPATH POR ETIQUETA "Precio al contado" (del scraper de coches)
+    # ESTRATEGIA 2: XPATH POR ETIQUETA "Precio al contado"
     try:
         contado_elements = driver.find_elements(By.XPATH, 
             "//span[text()='Precio al contado']/following::span[contains(@class, 'ItemDetailPrice') and contains(text(), '€')]"
@@ -192,563 +219,406 @@ def extract_price_robust(driver):
     except:
         pass
     
-    # ESTRATEGIA 3: BUSCAR CUALQUIER PRECIO EN WALLAPOP (método exitoso del scraper de coches)
+    # ESTRATEGIA 3: BUSCAR CUALQUIER PRECIO EN WALLAPOP
     try:
         price_elements = driver.find_elements(By.XPATH, "//*[contains(text(), '€')]")
         
-        valid_prices = []
-        for elem in price_elements[:10]:
-            try:
-                text = elem.text.strip().replace('&nbsp;', ' ').replace('\xa0', ' ')
-                if not text:
-                    continue
-                
-                # REGEX PARA CAPTURAR PRECIOS REALISTAS DE MOTOS
-                price_patterns = [
-                    r'(\d{1,3}(?:\.\d{3})+)\s*€',
-                    r'(\d{1,6})\s*€'
-                ]
-                
-                for pattern in price_patterns:
-                    price_matches = re.findall(pattern, text)
-                    for price_match in price_matches:
-                        try:
-                            price_clean = price_match.replace('.', '')
-                            price_value = int(price_clean)
-                            
-                            # RANGO PARA MOTOS: 500€ - 60,000€
-                            if 500 <= price_value <= 60000:
-                                formatted_price = f"{price_value:,}".replace(',', '.') + " €" if price_value >= 1000 else f"{price_value} €"
-                                valid_prices.append((price_value, formatted_price))
-                        except:
-                            continue
-            except:
-                continue
-        
-        # Tomar el precio más alto como precio principal
-        if valid_prices:
-            valid_prices = sorted(set(valid_prices), key=lambda x: x[0], reverse=True)
-            return valid_prices[0][1]
-                    
+        for element in price_elements:
+            text = element.text.strip()
+            if len(text) < 30 and '€' in text:
+                price = extract_price_from_text_wallapop(text)
+                if price != "No especificado":
+                    try:
+                        if 100 < int(price.replace(',', '')) < 1000000:
+                            return price
+                    except:
+                        continue
     except:
         pass
     
     return "No especificado"
 
 def extract_price_from_text_wallapop(text):
-    """Extrae precio de Wallapop - ADAPTADO del scraper de coches exitoso"""
-    if not text:
+    """Extrae precio numerico de texto de Wallapop"""
+    try:
+        text = text.replace('\xa0', ' ').strip()
+        match = re.search(r'([\d\s.,]+)\s*€', text)
+        
+        if match:
+            price_str = match.group(1)
+            price_str = price_str.replace(' ', '').replace('.', '')
+            
+            if ',' in price_str:
+                parts = price_str.split(',')
+                if len(parts) == 2 and len(parts[1]) <= 2:
+                    price_str = parts[0]
+            
+            price_int = int(price_str)
+            
+            if 100 < price_int < 1000000:
+                return f"{price_int:,}".replace(',', '.')
+            else:
+                return "No especificado"
+        
         return "No especificado"
     
-    # Limpiar texto (como en el scraper de coches exitoso)
-    clean_text = text.replace('&nbsp;', ' ').replace('\xa0', ' ').strip()
-    if not clean_text:
+    except Exception:
         return "No especificado"
+
+def extract_km_robust(driver):
+    """Extrae kilometraje usando MULTIPLES ESTRATEGIAS"""
     
-    # REGEX ESPECÍFICOS PARA WALLAPOP (copiados del scraper de coches exitoso)
-    price_patterns = [
-        r'(\d{1,3}(?:\.\d{3})+)\s*€',           # "7.690 €"
-        r'(\d{4,6})\s*€',                       # "7690 €"
-        r'(\d{1,2})\s*\.\s*(\d{3})\s*€',        # "7 . 690 €"
-        r'(\d{1,2}),(\d{3})\s*€',               # "7,690 €"
-        r'€\s*(\d{1,2}\.?\d{3,6})',             # "€ 7690"
-        r'(\d{1,2}\.?\d{3,6})\s*euros?',        # "7690 euros"
-    ]
+    # ESTRATEGIA 1: Buscar elemento con icono de velocímetro
+    try:
+        km_elements = driver.find_elements(By.XPATH, 
+            "//*[name()='svg' and contains(@class, 'icon-speedometer')]/ancestor::div[contains(@class, 'item-detail-characteristic')]//p"
+        )
+        
+        for element in km_elements:
+            text = element.text.strip()
+            if 'km' in text.lower():
+                km_value = extract_km_from_text(text)
+                if km_value != "No especificado":
+                    return km_value
+    except:
+        pass
     
-    for pattern in price_patterns:
-        matches = re.finditer(pattern, clean_text, re.IGNORECASE)
-        for match in matches:
-            try:
-                if len(match.groups()) == 2:  # Formato como 7.690
-                    price_value = int(match.group(1) + match.group(2))
-                else:
-                    price_str = match.group(1).replace('.', '').replace(',', '')
-                    price_value = int(price_str)
-                
-                # RANGO PARA MOTOS: 500€ - 60,000€
-                if 500 <= price_value <= 60000:
-                    return f"{price_value:,} €".replace(',', '.')
-            except:
-                continue
+    # ESTRATEGIA 2: Buscar por texto "km" o "Km" o "KM"
+    try:
+        all_elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'km') or contains(text(), 'Km') or contains(text(), 'KM')]")
+        
+        for element in all_elements:
+            text = element.text.strip()
+            if len(text) < 50 and ('km' in text.lower()):
+                km_value = extract_km_from_text(text)
+                if km_value != "No especificado":
+                    return km_value
+    except:
+        pass
+    
+    # ESTRATEGIA 3: Buscar en características del anuncio
+    try:
+        characteristics = driver.find_elements(By.CSS_SELECTOR, "[class*='characteristic']")
+        
+        for char in characteristics:
+            text = char.text.strip()
+            if 'km' in text.lower():
+                km_value = extract_km_from_text(text)
+                if km_value != "No especificado":
+                    return km_value
+    except:
+        pass
     
     return "No especificado"
 
-def extract_likes_robust(driver):
-    """Extrae likes con MULTIPLES ESTRATEGIAS"""
-    
-    # ESTRATEGIA 1: Selectores especificos de favoritos
-    like_selectors = [
-        "button[aria-label*='favorite'] span",
-        "button[aria-label*='Favorite'] span", 
-        "[aria-label*='favorite']",
-        "[aria-label*='Favorite']",
-        "button[class*='favorite'] span",
-        "button[class*='heart'] span",
-        "[class*='favorite-counter']",
-        "[class*='heart']"
-    ]
-    
-    for selector in like_selectors:
-        try:
-            elements = driver.find_elements(By.CSS_SELECTOR, selector)
-            for element in elements:
-                # Buscar numero en el texto
-                text = element.text.strip()
-                if text.isdigit() and 0 <= int(text) <= 1000:
-                    return int(text)
-                
-                # Buscar en aria-label
-                aria_label = element.get_attribute('aria-label') or ''
-                numbers = re.findall(r'(\d+)', aria_label)
-                if numbers:
-                    likes_value = int(numbers[0])
-                    if 0 <= likes_value <= 1000:
-                        return likes_value
-        except:
-            continue
-    
-    # ESTRATEGIA 2: Buscar patron en todo el HTML
+def extract_km_from_text(text):
+    """Extrae valor numérico de kilometraje de texto"""
     try:
-        page_source = driver.page_source
-        like_patterns = [
-            r'favorites.*?(\d+)',
-            r'favorite.*?(\d+)',
-            r'heart.*?(\d+)',
-            r'(\d+).*?favorite',
-            r'(\d+).*?heart'
+        text = text.lower().replace('\xa0', ' ').strip()
+        
+        patterns = [
+            r'(\d+[\s\.]*\d*)\s*km',
+            r'(\d+)\s*km',
+            r'kilometraje[:\s]*(\d+)',
         ]
         
-        for pattern in like_patterns:
-            matches = re.finditer(pattern, page_source, re.IGNORECASE)
-            for match in matches:
-                try:
-                    likes_value = int(match.group(1))
-                    if 0 <= likes_value <= 1000:
-                        return likes_value
-                except:
-                    continue
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                km_str = match.group(1).replace(' ', '').replace('.', '')
+                km_int = int(km_str)
+                
+                if 0 <= km_int <= 500000:
+                    return f"{km_int:,}".replace(',', '.')
+        
+        return "No especificado"
+        
+    except Exception:
+        return "No especificado"
+
+def extract_year_robust(driver):
+    """Extrae año del vehiculo"""
+    
+    # ESTRATEGIA 1: Buscar en características con icono calendario
+    try:
+        year_elements = driver.find_elements(By.XPATH, 
+            "//*[name()='svg' and contains(@class, 'icon-calendar')]/ancestor::div[contains(@class, 'item-detail-characteristic')]//p"
+        )
+        
+        for element in year_elements:
+            text = element.text.strip()
+            year = extract_year_from_text(text)
+            if year != "No especificado":
+                return year
     except:
         pass
     
-    return 0
-
-def extract_year_and_km_robust(driver):
-    """Extrae año y KM de la DESCRIPCIÓN de Wallapop - CORREGIDO PARA KM = 0"""
-    year = "No especificado"
-    km = "No especificado"
-    
+    # ESTRATEGIA 2: Buscar años de 4 dígitos (1990-2025)
     try:
-        # EXTRAER DE LA DESCRIPCIÓN usando selector específico de Wallapop
-        description_selectors = [
-            "section.item-detail_ItemDetailTwoColumns__description__0DKb0",
-            ".item-detail_ItemDetailTwoColumns__description__0DKb0",
-            "[class*='description']",
-            "section[class*='description']"
-        ]
+        all_text = driver.find_element(By.TAG_NAME, 'body').text
+        years_found = re.findall(r'\b(19[9][0-9]|20[0-2][0-9])\b', all_text)
         
-        description_text = ""
-        for selector in description_selectors:
-            try:
-                description_element = driver.find_element(By.CSS_SELECTOR, selector)
-                description_text = description_element.text
-                if description_text:
-                    break
-            except:
-                continue
-        
-        if description_text:
-            # EXTRAER KILÓMETROS de la descripción - PERMITIR KM = 0
-            km_patterns = [
-                r'-\s*Kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',      # "- Kilómetros: 4.500"
-                r'-\s*Kilómetros:\s*(\d+)',                      # "- Kilómetros: 0" PERMITIR 0
-                r'-\s*kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',      # "- kilómetros: 4.500"
-                r'-\s*kilómetros:\s*(\d+)',                      # "- kilómetros: 0" PERMITIR 0  
-                r'Kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',          # "Kilómetros: 4.500"
-                r'Kilómetros:\s*(\d+)',                          # "Kilómetros: 0" PERMITIR 0
-                r'kilómetros:\s*(\d{1,3}(?:\.\d{3})*)',          # "kilómetros: 4.500"
-                r'kilómetros:\s*(\d+)',                          # "kilómetros: 0" PERMITIR 0
-                r'KM:\s*(\d{1,3}(?:\.\d{3})*)',                  # "KM: 4.500"
-                r'KM:\s*(\d+)',                                  # "KM: 0" PERMITIR 0
-                r'km:\s*(\d{1,3}(?:\.\d{3})*)',                  # "km: 4.500"
-                r'km:\s*(\d+)',                                  # "km: 0" PERMITIR 0
-                r'(\d{1,3}(?:\.\d{3})*)\s*km',                   # "4.500 km"
-                r'(\d+)\s*km',                                   # "0 km" PERMITIR 0
-                r'(\d{1,3}(?:\.\d{3})*)\s*kilómetros',           # "4.500 kilómetros"
-                r'(\d+)\s*kilómetros',                           # "0 kilómetros" PERMITIR 0
-                r'(\d+)\s*mil\s*km',                             # "42 mil km"
-            ]
-            
-            for pattern in km_patterns:
-                match = re.search(pattern, description_text, re.IGNORECASE)
-                if match:
-                    try:
-                        km_text = match.group(1)
-                        
-                        # Manejar diferentes formatos
-                        if 'mil' in pattern.lower():
-                            # Formato "42 mil km"
-                            km_value = int(km_text) * 1000
-                        else:
-                            # Formato normal con puntos como separadores de miles
-                            km_value = int(km_text.replace('.', ''))
-                        
-                        # PERMITIR KM = 0 como valor válido
-                        if 0 <= km_value <= 999999:  # CAMBIADO: ahora incluye 0
-                            if km_value == 0:
-                                km = "0 km"  # Formato específico para 0 km
-                            else:
-                                km = f"{km_value:,} km".replace(',', '.')
-                            break
-                            
-                    except:
-                        continue
-            
-            # EXTRAER AÑO de la descripción
-            year_patterns = [
-                r'-\s*Año:\s*(\d{4})',                          # "- Año: 2023"
-                r'-\s*año:\s*(\d{4})',                          # "- año: 2023"
-                r'Año:\s*(\d{4})',                              # "Año: 2023"
-                r'año:\s*(\d{4})',                              # "año: 2023"
-                r'modelo\s+(\d{4})',                            # "modelo 2023"
-                r'del\s+(\d{4})',                               # "del 2023"
-                r'(\d{4})\s*(?:cc|cilindros)',                  # "2023 cc"
-            ]
-            
-            for pattern in year_patterns:
-                match = re.search(pattern, description_text, re.IGNORECASE)
-                if match:
-                    try:
-                        year_value = int(match.group(1))
-                        if 1990 <= year_value <= 2025:
-                            year = str(year_value)
-                            break
-                    except:
-                        continue
-        
-        # Si no encuentra en descripción, buscar en HTML general (fallback)
-        if km == "No especificado":
-            try:
-                html_content = driver.page_source
-                km_patterns_html = [
-                    r'Kilómetros["\s:>]*</span><span[^>]*>(\d+(?:[\.\s]\d+)*)</span>',
-                    r'kilómetros["\s:>]*</span><span[^>]*>(\d+(?:[\.\s]\d+)*)</span>',
-                    r'>(\d+)\s*km',  # PERMITIR 0 KM también en HTML
-                ]
-                
-                for pattern in km_patterns_html:
-                    matches = re.findall(pattern, html_content, re.IGNORECASE)
-                    for match in matches:
-                        try:
-                            km_clean = match.replace('.', '').replace(',', '').replace(' ', '')
-                            km_value = int(km_clean)
-                            if 0 <= km_value <= 999999:  # INCLUIR 0
-                                if km_value == 0:
-                                    km = "0 km"
-                                else:
-                                    km = f"{km_value:,} km".replace(',', '.')
-                                break
-                        except:
-                            continue
-                    if km != "No especificado":
-                        break
-            except:
-                pass
-                    
-    except Exception as e:
+        if years_found:
+            valid_years = [int(y) for y in years_found if 1990 <= int(y) <= 2025]
+            if valid_years:
+                return str(max(valid_years))  # El año más reciente encontrado
+    except:
         pass
     
-    return year, km
+    return "No especificado"
+
+def extract_year_from_text(text):
+    """Extrae año de texto"""
+    try:
+        match = re.search(r'\b(19[9][0-9]|20[0-2][0-9])\b', text)
+        if match:
+            year = int(match.group(1))
+            if 1990 <= year <= 2025:
+                return str(year)
+        return "No especificado"
+    except:
+        return "No especificado"
 
 def extract_views_robust(driver):
-    """Extrae visitas con multiples estrategias - CORREGIDO PARA FORMATO K"""
+    """Extrae número de visitas con MULTIPLES ESTRATEGIAS"""
     
-    # ESTRATEGIA 1: Selectores específicos
-    view_selectors = [
-        'span[aria-label="Views"]',
-        '[aria-label*="Views"]',
-        '[aria-label*="views"]',
-        '[class*="views"]',
-        '[class*="Views"]'
-    ]
+    # ESTRATEGIA 1: Buscar por icono de ojo
+    try:
+        view_elements = driver.find_elements(By.XPATH, 
+            "//*[name()='svg' and contains(@class, 'icon-eye')]/following-sibling::span"
+        )
+        
+        for element in view_elements:
+            text = element.text.strip()
+            views = extract_number_from_text(text)
+            if views is not None and views > 0:
+                return views
+    except:
+        pass
     
-    for selector in view_selectors:
-        try:
+    # ESTRATEGIA 2: Buscar por clase "views" o similar
+    try:
+        view_selectors = [
+            "[class*='views']",
+            "[class*='Views']",
+            "[class*='visit']"
+        ]
+        
+        for selector in view_selectors:
             elements = driver.find_elements(By.CSS_SELECTOR, selector)
             for element in elements:
                 text = element.text.strip()
-                
-                # MANEJAR FORMATO K (1.1k = 1,100)
-                if 'k' in text.lower():
-                    try:
-                        # Extraer número antes de 'k'
-                        k_match = re.search(r'(\d+(?:\.\d+)?)\s*k', text.lower())
-                        if k_match:
-                            k_value = float(k_match.group(1))
-                            views = int(k_value * 1000)
-                            if 0 <= views <= 500000:  # Rango ampliado
-                                return views
-                    except:
-                        pass
-                
-                # FORMATO NORMAL (número entero) - CAMBIADO elif por if
-                if text.isdigit():
-                    views = int(text)
-                    if 0 <= views <= 500000:  # Rango ampliado
-                        return views
-                        
-                # Buscar en aria-label
-                aria_label = element.get_attribute('aria-label') or ''
-                
-                # MANEJAR FORMATO K EN ARIA-LABEL
-                if 'k' in aria_label.lower():
-                    try:
-                        k_match = re.search(r'(\d+(?:\.\d+)?)\s*k', aria_label.lower())
-                        if k_match:
-                            k_value = float(k_match.group(1))
-                            views = int(k_value * 1000)
-                            if 0 <= views <= 500000:
-                                return views
-                    except:
-                        continue
-                
-                # FORMATO NORMAL EN ARIA-LABEL
-                numbers = re.findall(r'(\d+)', aria_label)
-                if numbers:
-                    views_value = int(numbers[0])
-                    if 0 <= views_value <= 500000:
-                        return views_value
-        except:
-            continue
-    
-    # ESTRATEGIA 2: Buscar en HTML completo formato K
-    try:
-        page_source = driver.page_source
-        
-        # Buscar patrones con K
-        k_patterns = [
-            r'(\d+(?:\.\d+)?)\s*k\s*views',
-            r'views[^>]*>(\d+(?:\.\d+)?)\s*k',
-            r'(\d+(?:\.\d+)?)\s*k\s*visitas'
-        ]
-        
-        for pattern in k_patterns:
-            matches = re.finditer(pattern, page_source, re.IGNORECASE)
-            for match in matches:
-                try:
-                    k_value = float(match.group(1))
-                    views = int(k_value * 1000)
-                    if 0 <= views <= 500000:
-                        return views
-                except:
-                    continue
-        
-        # Buscar patrones normales
-        view_patterns = [
-            r'views.*?(\d+)',
-            r'view.*?(\d+)',
-            r'(\d+).*?view'
-        ]
-        
-        for pattern in view_patterns:
-            matches = re.finditer(pattern, page_source, re.IGNORECASE)
-            for match in matches:
-                try:
-                    views_value = int(match.group(1))
-                    if 0 <= views_value <= 500000:
-                        return views_value
-                except:
-                    continue
+                views = extract_number_from_text(text)
+                if views is not None and views > 0:
+                    return views
     except:
         pass
     
     return 0
 
-def create_moto_id(title, price, year, km):
-    """Crea ID unico para detectar duplicados"""
+def extract_likes_robust(driver):
+    """Extrae número de likes/favoritos"""
+    
+    # ESTRATEGIA 1: Buscar por icono de corazón
     try:
-        normalized_title = re.sub(r'[^\w\s]', '', title.lower().strip())[:20]
-        normalized_price = re.sub(r'[^\d]', '', price)
-        unique_string = f"{normalized_title}_{normalized_price}_{year}_{km}".replace(' ', '_')
-        return hashlib.md5(unique_string.encode()).hexdigest()[:10]
-    except:
-        return hashlib.md5(str(time.time()).encode()).hexdigest()[:10]
-
-def find_and_click_load_more(driver):
-    """
-    Busca y hace clic en 'Ver más productos' - VERSION OPTIMIZADA SIN DEBUG
-    """
-    
-    # SELECTORES CORREGIDOS basados en el HTML real
-    selectors = [
-        ('css', 'walla-button[text="Ver más productos"]'),
-        ('css', 'walla-button[text*="Ver más"]'),
-        ('css', 'button.walla-button__button'),
-        ('css', '.walla-button__button'),
-        ('xpath', '//walla-button[@text="Ver más productos"]'),
-        ('xpath', '//walla-button[contains(@text, "Ver más")]'),
-        ('xpath', '//span[text()="Ver más productos"]/ancestor::button'),
-        ('xpath', '//span[contains(text(), "Ver más")]/ancestor::button'),
-        ('xpath', '//span[text()="Ver más productos"]/ancestor::walla-button'),
-        ('css', '.d-flex.justify-content-center walla-button'),
-        ('css', 'div[class*="justify-content-center"] walla-button'),
-        ('xpath', '//button[contains(@class, "walla-button")]'),
-        ('xpath', '//*[contains(text(), "Ver más productos")]'),
-        ('css', '[class*="load-more"]'),
-        ('css', '[class*="more-items"]')
-    ]
-    
-    for selector_type, selector in selectors:
-        try:
-            if selector_type == 'css':
-                elements = driver.find_elements(By.CSS_SELECTOR, selector)
-            else:  # xpath
-                elements = driver.find_elements(By.XPATH, selector)
-            
-            for element in elements:
-                try:
-                    if not element.is_displayed() or not element.is_enabled():
-                        continue
-                    
-                    # Verificar texto si es necesario
-                    element_text = element.text.strip().lower()
-                    if 'ver más' in element_text or 'ver mas' in element_text or not element_text:
-                        # Scroll y clic
-                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
-                        time.sleep(0.2)  # REDUCIDO de 0.5 a 0.2
-                        
-                        try:
-                            element.click()
-                            time.sleep(0.5)  # REDUCIDO de 1 a 0.5
-                            return True
-                        except:
-                            try:
-                                driver.execute_script("arguments[0].click();", element)
-                                time.sleep(0.5)  # REDUCIDO de 1 a 0.5
-                                return True
-                            except:
-                                continue
-                except:
-                    continue
-        except:
-            continue
-    
-    return False
-
-def smart_load_all_ads(driver, expected_count=300, max_clicks=15):
-    """
-    Carga todos los anuncios de forma inteligente - VERSION OPTIMIZADA
-    """
-    print(f"[SMART] Objetivo: {expected_count} anuncios, máximo {max_clicks} clics")
-    
-    # Scroll inicial más rápido
-    for i in range(2):  # REDUCIDO de 3 a 2
-        driver.execute_script("window.scrollBy(0, 1000);")
-        time.sleep(0.2)  # REDUCIDO de 0.3 a 0.2
-    
-    initial_count = len(driver.find_elements(By.XPATH, "//a[contains(@href, '/item/')]"))
-    print(f"[SMART] Anuncios iniciales: {initial_count}")
-    
-    clicks_realizados = 0
-    last_count = initial_count
-    
-    for click_num in range(max_clicks):
-        # Scroll más rápido
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(0.5)  # REDUCIDO de 1 a 0.5
+        like_elements = driver.find_elements(By.XPATH, 
+            "//*[name()='svg' and contains(@class, 'icon-heart')]/following-sibling::span"
+        )
         
-        if find_and_click_load_more(driver):
-            clicks_realizados += 1
-            
-            # Espera más corta para carga
-            time.sleep(1.5)  # REDUCIDO de 3 a 1.5
-            
-            new_count = len(driver.find_elements(By.XPATH, "//a[contains(@href, '/item/')]"))
-            
-            if new_count > last_count:
-                print(f"[SMART] Clic {clicks_realizados}: {last_count} → {new_count} (+{new_count - last_count})")
-                last_count = new_count
-                
-                if new_count >= expected_count:
-                    print(f"[SMART] Objetivo alcanzado")
-                    break
-            else:
-                print(f"[SMART] Sin nuevos anuncios, fin del contenido")
-                break
-        else:
-            print(f"[SMART] Botón no encontrado, fin del contenido")
-            break
+        for element in like_elements:
+            text = element.text.strip()
+            likes = extract_number_from_text(text)
+            if likes is not None and likes >= 0:
+                return likes
+    except:
+        pass
     
-    final_count = len(driver.find_elements(By.XPATH, "//a[contains(@href, '/item/')]"))
-    print(f"[SMART] Total final: {final_count} anuncios ({clicks_realizados} clics)")
+    # ESTRATEGIA 2: Buscar por clase "favorite" o similar
+    try:
+        like_selectors = [
+            "[class*='favorite']",
+            "[class*='Favorite']",
+            "[class*='like']",
+            "[class*='heart']"
+        ]
+        
+        for selector in like_selectors:
+            elements = driver.find_elements(By.CSS_SELECTOR, selector)
+            for element in elements:
+                text = element.text.strip()
+                likes = extract_number_from_text(text)
+                if likes is not None and likes >= 0:
+                    return likes
+    except:
+        pass
     
-    return final_count
+    return 0
 
-def get_user_ads(driver, user_url, account_name):
-    """Procesa todos los anuncios con extraccion ULTRA ROBUSTA - OPTIMIZADA"""
-    print(f"\n[INFO] === PROCESANDO: {account_name} ===")
-    print(f"[INFO] URL: {user_url}")
+def extract_number_from_text(text):
+    """Extrae número de texto (maneja formato con puntos/comas)"""
+    try:
+        text = text.replace('.', '').replace(',', '').strip()
+        match = re.search(r'\d+', text)
+        if match:
+            return int(match.group())
+        return None
+    except:
+        return None
+
+def scroll_to_load_all_ads(driver, max_clicks=15, target_ads=300):
+    """Carga todos los anuncios con sistema SMART + delays aleatorios"""
+    
+    print(f"[SMART] Objetivo: {target_ads} anuncios, máximo {max_clicks} clics")
+    
+    try:
+        time.sleep(random.uniform(1.5, 2.5))  # Delay inicial aleatorio
+        
+        # Contar anuncios iniciales
+        initial_ads = len(driver.find_elements(By.CSS_SELECTOR, "a[href*='/item/']"))
+        print(f"[SMART] Anuncios iniciales: {initial_ads}")
+        
+        previous_count = initial_ads
+        clicks_count = 0
+        no_change_count = 0
+        
+        while clicks_count < max_clicks:
+            try:
+                # Buscar botón "Ver más"
+                button = WebDriverWait(driver, 3).until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Ver más')]"))
+                )
+                
+                # Scroll hasta el botón con comportamiento humano
+                driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", button)
+                time.sleep(random.uniform(0.8, 1.5))  # Delay aleatorio antes de clic
+                
+                button.click()
+                clicks_count += 1
+                
+                # Esperar carga con delay aleatorio
+                time.sleep(random.uniform(2.0, 3.5))  # Delay aleatorio después de clic
+                
+                # Contar anuncios ahora
+                current_ads = len(driver.find_elements(By.CSS_SELECTOR, "a[href*='/item/']"))
+                new_ads = current_ads - previous_count
+                
+                print(f"[SMART] Clic {clicks_count}: {previous_count} → {current_ads} (+{new_ads})")
+                
+                # Si no se cargaron nuevos anuncios
+                if new_ads == 0:
+                    no_change_count += 1
+                    if no_change_count >= 2:
+                        print(f"[SMART] Sin nuevos anuncios tras {no_change_count} clics, finalizando")
+                        break
+                else:
+                    no_change_count = 0
+                
+                # Si alcanzamos el objetivo
+                if current_ads >= target_ads:
+                    print(f"[SMART] Objetivo alcanzado: {current_ads} anuncios")
+                    break
+                
+                previous_count = current_ads
+                
+            except TimeoutException:
+                print(f"[SMART] Botón no encontrado, fin del contenido")
+                break
+            except Exception as e:
+                print(f"[SMART] Error en clic: {str(e)}")
+                break
+        
+        # Conteo final
+        final_count = len(driver.find_elements(By.CSS_SELECTOR, "a[href*='/item/']"))
+        print(f"[SMART] Total final: {final_count} anuncios ({clicks_count} clics)")
+        
+        return True
+        
+    except Exception as e:
+        print(f"[ERROR] Error cargando anuncios: {str(e)}")
+        return False
+
+def get_user_ads(driver, profile_url, account_name):
+    """Extrae anuncios de perfil con DELAYS ALEATORIOS anti-detección"""
     
     all_ads = []
     
     try:
-        if not safe_navigate(driver, user_url):
-            print(f"[ERROR] No se pudo acceder al perfil")
-            return all_ads
+        print(f"[INFO] === PROCESANDO: {account_name} ===")
+        print(f"[INFO] URL: {profile_url}")
         
+        if not safe_navigate(driver, profile_url):
+            print(f"[ERROR] No se pudo navegar a {profile_url}")
+            return []
+        
+        # Aceptar cookies
         accept_cookies(driver)
         
-        # CARGA OPTIMIZADA de anuncios
-        final_count = smart_load_all_ads(driver, expected_count=300, max_clicks=15)
+        # Cargar todos los anuncios
+        scroll_to_load_all_ads(driver)
         
-        ad_elements = driver.find_elements(By.XPATH, "//a[contains(@href, '/item/')]")
-        ad_urls = list(set([elem.get_attribute('href') for elem in ad_elements if elem.get_attribute('href')]))
+        # Extraer enlaces
+        ad_links = driver.find_elements(By.CSS_SELECTOR, "a[href*='/item/']")
+        ad_urls = list(set([link.get_attribute('href') for link in ad_links if link.get_attribute('href')]))
         
         print(f"[INFO] Enlaces únicos: {len(ad_urls)}")
         
+        if not ad_urls:
+            print(f"[ADVERTENCIA] No se encontraron anuncios en {account_name}")
+            return []
+        
+        # Procesar cada anuncio
         successful_ads = 0
         failed_ads = 0
-        
-        # CONTADORES PARA MONITORING RAPIDO
         precios_ok = 0
         km_ok = 0
-        ejemplos_mostrados = 0
         
-        for idx, ad_url in enumerate(tqdm(ad_urls, desc=f"Extrayendo {account_name}", colour="green")):
+        # Barra de progreso
+        pbar = tqdm(ad_urls, desc=f"Extrayendo {account_name}", 
+                   bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
+        
+        for i, ad_url in enumerate(pbar, 1):
             try:
+                # DELAY ALEATORIO ENTRE ANUNCIOS (2-5 segundos)
+                delay = random.uniform(2.0, 5.0)
+                time.sleep(delay)
+                
                 if not safe_navigate(driver, ad_url):
                     failed_ads += 1
                     continue
                 
-                # EXTRACCION ROBUSTA 
-                title = extract_title_robust(driver)
-                price = extract_price_robust(driver)
-                likes = extract_likes_robust(driver)
-                year, km = extract_year_and_km_robust(driver)
-                views = extract_views_robust(driver)
-                moto_id = create_moto_id(title, price, year, km)
+                # Esperar a que cargue la página
+                time.sleep(random.uniform(1.0, 2.0))
                 
-                # CONTEO PARA MONITORING
-                if price != "No especificado":
+                # Extraer datos
+                titulo = extract_title_robust(driver)
+                precio = extract_price_robust(driver)
+                ano = extract_year_robust(driver)
+                km = extract_km_robust(driver)
+                visitas = extract_views_robust(driver)
+                likes = extract_likes_robust(driver)
+                
+                # Contadores de calidad
+                if precio != "No especificado":
                     precios_ok += 1
                 if km != "No especificado":
                     km_ok += 1
                 
-                # MOSTRAR EJEMPLOS DE LOS PRIMEROS 3 ANUNCIOS
-                if ejemplos_mostrados < 3 and price != "No especificado" and km != "No especificado":
-                    print(f"[EJEMPLO {ejemplos_mostrados + 1}] {title[:30]}... | {price} | {km} | {year}")
-                    ejemplos_mostrados += 1
+                # Generar ID único
+                id_base = f"{ad_url}_{account_name}_{titulo}_{km}"
+                id_unico = hashlib.md5(id_base.encode()).hexdigest()[:12]
                 
                 ad_data = {
-                    'ID_Moto': moto_id,
+                    'ID_Moto': f"MOTICK-{id_unico}",
                     'Cuenta': account_name,
-                    'Titulo': title,
-                    'Precio': price,
-                    'Ano': year,
+                    'Titulo': titulo,
+                    'Precio': precio,
+                    'Ano': ano,
                     'Kilometraje': km,
-                    'Visitas': views,
+                    'Visitas': visitas,
                     'Likes': likes,
                     'URL': ad_url,
-                    'Fecha_Extraccion': datetime.now().strftime("%d/%m/%Y %H:%M")
+                    'Fecha_Extraccion': datetime.now().strftime("%d/%m/%Y"),
+                    'ID_Unico_Real': id_base
                 }
                 
                 all_ads.append(ad_data)
@@ -759,8 +629,6 @@ def get_user_ads(driver, user_url, account_name):
                     precio_pct = (precios_ok / successful_ads * 100) if successful_ads > 0 else 0
                     km_pct = (km_ok / successful_ads * 100) if successful_ads > 0 else 0
                     print(f"[PROGRESO] {successful_ads} procesados | Precios: {precio_pct:.1f}% | KM: {km_pct:.1f}%")
-                
-                # SIN DELAY entre anuncios para máxima velocidad
                 
             except Exception as e:
                 failed_ads += 1
@@ -787,15 +655,16 @@ def get_user_ads(driver, user_url, account_name):
     return all_ads
 
 def main():
-    """Funcion principal del scraper MOTICK automatizado - OPTIMIZADA"""
+    """Funcion principal del scraper MOTICK - VERSION CORREGIDA"""
     print("="*80)
-    print("    MOTICK SCRAPER - VERSION OPTIMIZADA PARA VELOCIDAD")
+    print("    MOTICK SCRAPER - VERSION CORREGIDA ANTI-DETECCION")
     print("="*80)
     print(" CARACTERISTICAS:")
+    print("   • ChromeDriver se actualiza automáticamente")
+    print("   • Delays aleatorios entre anuncios (2-5 seg)")
+    print("   • Rotación de User Agents")
     print("   • Extraccion robusta con multiples estrategias")
     print("   • Subida directa a Google Sheets")
-    print("   • Automatizado para GitHub Actions")
-    print("   • OPTIMIZADO: 3x más rápido que versión anterior")
     print()
     
     try:
@@ -827,12 +696,15 @@ def main():
         test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
         motick_accounts = get_motick_accounts(test_mode)
         
+        if test_mode:
+            print(f"[INFO] MODO TEST: Solo 2 cuentas")
+        else:
+            print(f"MODO COMPLETO: Procesando {len(motick_accounts)} cuentas MOTICK")
+        
         print(f"[INFO] Inicializando navegador...")
         driver = setup_browser()
         
         all_results = []
-        
-        print(f"[INFO] Procesando {len(motick_accounts)} cuentas MOTICK")
         
         start_time = time.time()
         
@@ -847,7 +719,8 @@ def main():
                 
                 print(f"[RESUMEN] {account_name}: {len(account_ads)} anuncios procesados")
                 
-                time.sleep(1)  # REDUCIDO de 2 a 1 segundo entre cuentas
+                # Delay entre cuentas
+                time.sleep(random.uniform(3, 7))
                 
             except Exception as e:
                 print(f"[ERROR] Error procesando {account_name}: {str(e)}")
@@ -880,10 +753,10 @@ def main():
             print(f"• Total likes: {total_likes:,}")
             print(f"• Tiempo total: {elapsed_time:.1f} minutos")
             print(f"\n CALIDAD DE EXTRACCIÓN:")
-            print(f"• Titulos: {titles_ok}/{total_processed} ({titles_ok/total_processed*100:.1f}%) {'' if titles_ok/total_processed > 0.8 else '⚠️'}")
-            print(f"• Precios: {prices_ok}/{total_processed} ({prices_ok/total_processed*100:.1f}%) {'' if prices_ok/total_processed > 0.7 else '⚠️'}")
-            print(f"• Kilometraje: {km_ok}/{total_processed} ({km_ok/total_processed*100:.1f}%) {'' if km_ok/total_processed > 0.6 else '⚠️'}")
-            print(f"• Años: {years_ok}/{total_processed} ({years_ok/total_processed*100:.1f}%) {'' if years_ok/total_processed > 0.5 else '⚠️'}")
+            print(f"• Titulos: {titles_ok}/{total_processed} ({titles_ok/total_processed*100:.1f}%) ")
+            print(f"• Precios: {prices_ok}/{total_processed} ({prices_ok/total_processed*100:.1f}%) ")
+            print(f"• Kilometraje: {km_ok}/{total_processed} ({km_ok/total_processed*100:.1f}%) ")
+            print(f"• Años: {years_ok}/{total_processed} ({years_ok/total_processed*100:.1f}%) ")
             print(f"\n PROMEDIOS:")
             print(f"• Media visitas: {df['Visitas'].mean():.1f}")
             print(f"• Media likes: {df['Likes'].mean():.1f}")
@@ -912,7 +785,7 @@ def main():
                 print(f"\n✅ CALIDAD EXCELENTE: Todos los indicadores están bien")
             
             # Subir a Google Sheets
-            fecha_extraccion = datetime.now().strftime("%d/%m/%Y")
+            fecha_extraccion = datetime.now().strftime("%d/%m/%y")
             print(f"\n[INFO] Subiendo datos a Google Sheets...")
             
             success, sheet_name = gs_handler.subir_datos_scraper(df, fecha_extraccion)
